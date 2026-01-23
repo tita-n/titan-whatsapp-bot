@@ -2,9 +2,11 @@ services:
   - type: web
     name: titan-whatsapp-bot
     runtime: node
-    buildCommand: npm install
-    startCommand: npm start
+    buildCommand: npm install --no-audit --no-fund
+    startCommand: node index.js
     envVars:
+      - key: NODE_VERSION
+        value: 18.17.1
       - key: OWNER_NUMBER
         sync: false
         description: "Your WhatsApp phone number (intl format, no + or spaces)"
