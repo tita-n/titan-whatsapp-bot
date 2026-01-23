@@ -58,7 +58,7 @@ async function startTitan() {
         },
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
-        browser: Browsers.macOS('Chrome'),
+        browser: Browsers.macOS('safari'),
         markOnlineOnConnect: false,
         connectTimeoutMs: 60000,
         syncFullHistory: false // Speed up login
