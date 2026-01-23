@@ -2,7 +2,7 @@ const { downloadMediaMessage, downloadContentFromMessage } = require('@whiskeyso
 const moment = require('moment');
 const fs = require('fs-extra');
 const axios = require('axios');
-const { config, settings, getOwnerJid, isGroup, getGroupAdmins } = require('./utils');
+const { config, settings, saveSettings, getOwnerJid, isGroup, getGroupAdmins } = require('./utils');
 
 async function handleAntiLink(sock, msg, jid, text, sender) {
     if (!settings.antilink[jid]) return false; // Use Shared Settings
@@ -172,14 +172,17 @@ Prefix: *${config.prefix}*
             if (!args[0]) {
                 const current = settings.antilink[jid];
                 settings.antilink[jid] = !current;
+                saveSettings();
                 await sendWithLogo(settings.antilink[jid] ? '✅ Antilink Enabled.' : '❌ Antilink Disabled.');
                 return;
             }
             if (args[0] === 'on') {
                 settings.antilink[jid] = true;
+                saveSettings();
                 await sendWithLogo('✅ Antilink Enabled.');
             } else if (args[0] === 'off') {
                 settings.antilink[jid] = false;
+                saveSettings();
                 await sendWithLogo('❌ Antilink Disabled.');
             }
             break;
@@ -189,14 +192,17 @@ Prefix: *${config.prefix}*
             if (!args[0]) {
                 const current = settings.welcome[jid];
                 settings.welcome[jid] = !current;
+                saveSettings();
                 await sendWithLogo(settings.welcome[jid] ? '✅ Welcome msg Enabled.' : '❌ Welcome msg Disabled.');
                 return;
             }
             if (args[0] === 'on') {
                 settings.welcome[jid] = true;
+                saveSettings();
                 await sendWithLogo('✅ Welcome msg Enabled.');
             } else if (args[0] === 'off') {
                 settings.welcome[jid] = false;
+                saveSettings();
                 await sendWithLogo('❌ Welcome msg Disabled.');
             }
             break;
@@ -206,14 +212,17 @@ Prefix: *${config.prefix}*
             if (!args[0]) {
                 const current = settings.goodbye[jid];
                 settings.goodbye[jid] = !current;
+                saveSettings();
                 await sendWithLogo(settings.goodbye[jid] ? '✅ Goodbye msg Enabled.' : '❌ Goodbye msg Disabled.');
                 return;
             }
             if (args[0] === 'on') {
                 settings.goodbye[jid] = true;
+                saveSettings();
                 await sendWithLogo('✅ Goodbye msg Enabled.');
             } else if (args[0] === 'off') {
                 settings.goodbye[jid] = false;
+                saveSettings();
                 await sendWithLogo('❌ Goodbye msg Disabled.');
             }
             break;
@@ -266,14 +275,17 @@ Prefix: *${config.prefix}*
             if (!args[0]) {
                 const current = settings.antiviewonce[jid];
                 settings.antiviewonce[jid] = !current;
+                saveSettings();
                 await sendWithLogo(settings.antiviewonce[jid] ? '✅ Spy Mode Updated: Pasive Anti-ViewOnce Enabled.' : '❌ Spy Mode Disabled.');
                 return;
             }
             if (args[0] === 'on') {
                 settings.antiviewonce[jid] = true;
+                saveSettings();
                 await sendWithLogo('✅ Spy Mode Enabled.');
             } else if (args[0] === 'off') {
                 settings.antiviewonce[jid] = false;
+                saveSettings();
                 await sendWithLogo('❌ Spy Mode Disabled.');
             }
             break;
@@ -284,14 +296,17 @@ Prefix: *${config.prefix}*
             if (!args[0]) {
                 const current = settings.antidelete[jid];
                 settings.antidelete[jid] = !current;
+                saveSettings();
                 await sendWithLogo(settings.antidelete[jid] ? '✅ Anti-Delete Enabled.' : '❌ Anti-Delete Disabled.');
                 return;
             }
             if (args[0] === 'on') {
                 settings.antidelete[jid] = true;
+                saveSettings();
                 await sendWithLogo('✅ Anti-Delete Enabled.');
             } else if (args[0] === 'off') {
                 settings.antidelete[jid] = false;
+                saveSettings();
                 await sendWithLogo('❌ Anti-Delete Disabled.');
             }
             break;
