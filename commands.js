@@ -1,6 +1,7 @@
 const { downloadMediaMessage, downloadContentFromMessage } = require('@whiskeysockets/baileys');
 const moment = require('moment');
 const fs = require('fs-extra');
+const axios = require('axios');
 const { config, settings, getOwnerJid, isGroup, getGroupAdmins } = require('./utils');
 
 async function handleAntiLink(sock, msg, jid, text, sender) {
@@ -85,8 +86,9 @@ Prefix: *${config.prefix}*
 *${config.prefix}delete* - Delete message
 *${config.prefix}antilink [on/off]* - Auto-kick links
 
-*🎨 Media*
-*${config.prefix}sticker* - Create sticker`;
+*${config.prefix}sticker* - Create sticker
+*${config.prefix}download [url]* - Sc-Media Downloader (TikTok, IG, YT)
+*${config.prefix}d [url]* - Shortcut for download`;
             await sendWithLogo(menuText);
             break;
 
@@ -379,6 +381,63 @@ Prefix: *${config.prefix}*
                 }
             } catch (e) {
                 await sendWithLogo('❌ conversion failed.');
+            }
+            break;
+
+        case 'download':
+        case 'd':
+            if (!args[0]) return sendWithLogo('❌ Please provide a link (TikTok, Instagram, YouTube, etc.)');
+            const url = args[0];
+
+            try {
+                await sock.sendMessage(jid, { text: '⏬ *Fetching media...* Please wait.' }, { quoted: msg });
+
+                // Cobalt API Request
+                const response = await axios.post('https://api.cobalt.tools/api/json', {
+                    url: url,
+                    videoQuality: '720',
+                    filenameStyle: 'basic'
+                }, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = response.data;
+
+                if (data.status === 'error') {
+                    return sendWithLogo(`❌ Cobalt Error: ${data.text}`);
+                }
+
+                if (data.status === 'stream' || data.status === 'picker' || data.status === 'redirect') {
+                    const downloadUrl = data.url;
+                    if (!downloadUrl) return sendWithLogo('❌ Could not get download URL.');
+
+                    // Fetch the actual media buffer
+                    const mediaRes = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
+                    const buffer = Buffer.from(mediaRes.data);
+
+                    // Determine file type from extension if possible, or default to video
+                    // Cobalt usually returns mp4 or jpg/png
+                    const isImage = data.filename?.endsWith('.jpg') || data.filename?.endsWith('.png') || data.filename?.endsWith('.webp');
+                    const isAudio = data.filename?.endsWith('.mp3') || data.filename?.endsWith('.ogg');
+
+                    if (isImage) {
+                        await sock.sendMessage(jid, { image: buffer, caption: `✅ Downloaded: ${data.filename || 'Media'}` }, { quoted: msg });
+                    } else if (isAudio) {
+                        await sock.sendMessage(jid, { audio: buffer, mimetype: 'audio/mpeg', fileName: data.filename || 'Audio.mp3' }, { quoted: msg });
+                    } else {
+                        // Default to Video
+                        await sock.sendMessage(jid, { video: buffer, caption: `✅ Downloaded: ${data.filename || 'Video'}` }, { quoted: msg });
+                    }
+                } else {
+                    sendWithLogo(`❌ Unexpected status: ${data.status}`);
+                }
+
+            } catch (e) {
+                console.error('[TITAN] Download Error:', e.response?.data || e.message);
+                sendWithLogo('❌ Failed to download. The link might be private, invalid, or the service is down.');
             }
             break;
 
