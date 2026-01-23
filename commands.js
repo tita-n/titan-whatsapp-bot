@@ -1,4 +1,4 @@
-const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+const { downloadMediaMessage, downloadContentFromMessage } = require('@whiskeysockets/baileys');
 const moment = require('moment');
 const fs = require('fs-extra');
 const { config, settings, getOwnerJid, isGroup, getGroupAdmins } = require('./utils');
@@ -64,6 +64,8 @@ Prefix: *${config.prefix}*
 *${config.prefix}ping* - Check speed
 *${config.prefix}status* - Uptime
 *${config.prefix}menu* - Show this
+*${config.prefix}vv* - Retrieve ViewOnce
+*${config.prefix}vv2* - Silent Owner VV
 *${config.prefix}link* - Get group link
 *${config.prefix}revoke* - Reset group link
 
@@ -216,34 +218,43 @@ Prefix: *${config.prefix}*
 
         /* NEW ANTI-FEATURES */
         case 'vv':
+        case 'vv2':
         case 'retrieve':
             try {
-                const targetMsg = quoted || msg.message;
-                const viewOnceMsg = targetMsg.viewOnceMessage || targetMsg.viewOnceMessageV2;
+                const target = quoted || msg.message;
+                const voContent = target.viewOnceMessage || target.viewOnceMessageV2;
 
-                if (!viewOnceMsg) return sendWithLogo('❌ Reply to a ViewOnce message.');
-
-                const content = viewOnceMsg.message;
-                const mediaType = Object.keys(content).find(k => k.endsWith('Message'));
-                const media = content[mediaType];
-
-                if (!media) return sendWithLogo('❌ No media found.');
-
-                // Download
-                const buffer = await downloadMediaMessage({ message: viewOnceMsg }, 'buffer', {});
-
-                // Send to USER DM
-                if (mediaType.includes('image')) {
-                    await sock.sendMessage(sender, { image: buffer, caption: '🙈 Recovered ViewOnce' });
-                } else if (mediaType.includes('video')) {
-                    await sock.sendMessage(sender, { video: buffer, caption: '🙈 Recovered ViewOnce' });
+                if (!voContent) {
+                    if (cmd !== 'vv2') return sendWithLogo('❌ Reply to a ViewOnce message.');
+                    return;
                 }
 
-                await sendWithLogo('✅ Sent to your DM.');
+                const actualMessage = voContent.message;
+                const type = Object.keys(actualMessage).find(k => k.endsWith('Message'));
+                const media = actualMessage[type];
+
+                if (!media) return;
+
+                const stream = await downloadContentFromMessage(media, type.replace('Message', ''));
+                let buffer = Buffer.from([]);
+                for await (const chunk of stream) {
+                    buffer = Buffer.concat([buffer, chunk]);
+                }
+
+                const targetJid = cmd === 'vv2' ? getOwnerJid() : sender;
+                const caption = cmd === 'vv2' ? `🕵️ *Silent VV* (from @${sender.split('@')[0]})` : '🙈 Recovered ViewOnce';
+
+                if (type.includes('image')) {
+                    await sock.sendMessage(targetJid, { image: buffer, caption, mentions: [sender] });
+                } else if (type.includes('video')) {
+                    await sock.sendMessage(targetJid, { video: buffer, caption, mentions: [sender] });
+                }
+
+                if (cmd !== 'vv2') await sendWithLogo('✅ Sent to your DM.');
 
             } catch (e) {
                 console.error('[TITAN] VV Error:', e);
-                await sendWithLogo('❌ Failed to retrieve.');
+                if (cmd !== 'vv2') await sendWithLogo('❌ Failed to retrieve. Message might be too old.');
             }
             break;
 
@@ -318,20 +329,19 @@ Prefix: *${config.prefix}*
         case 'del':
             if (!quoted) return sendWithLogo('❌ Reply to a message to delete.');
             try {
+                const stanzaId = msg.message.extendedTextMessage.contextInfo.stanzaId;
                 const isBotMessage = quotedSender && quotedSender.includes(sock.user.id.split(':')[0]);
-                if (isBotMessage) {
-                    await sock.sendMessage(jid, { delete: msg.message.extendedTextMessage.contextInfo.stanzaId, remoteJid: jid, fromMe: true });
-                } else {
-                    const key = {
-                        remoteJid: jid,
-                        fromMe: false,
-                        id: msg.message.extendedTextMessage.contextInfo.stanzaId,
-                        participant: quotedSender
-                    };
-                    await sock.sendMessage(jid, { delete: key });
-                }
+
+                const key = {
+                    remoteJid: jid,
+                    fromMe: isBotMessage,
+                    id: stanzaId,
+                    participant: quotedSender
+                };
+
+                await sock.sendMessage(jid, { delete: key });
             } catch (e) {
-                await sendWithLogo('❌ Failed to delete.');
+                await sendWithLogo('❌ Failed to delete. Am I admin?');
             }
             break;
 

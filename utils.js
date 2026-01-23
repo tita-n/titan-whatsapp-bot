@@ -51,8 +51,17 @@ const isGroup = (jid) => jid?.endsWith('@g.us');
 const getMessageText = (msg) => {
     const m = msg.message;
     if (!m) return '';
-    return m.conversation || m.extendedTextMessage?.text || m.imageMessage?.caption ||
-        m.videoMessage?.caption || m.documentMessage?.caption || '';
+    // Handle wrapped ViewOnce messages (for manual .vv command)
+    const content = m.viewOnceMessage?.message || m.viewOnceMessageV2?.message || m;
+
+    return content.conversation ||
+        content.extendedTextMessage?.text ||
+        content.imageMessage?.caption ||
+        content.videoMessage?.caption ||
+        content.documentMessage?.caption ||
+        content.buttonsResponseMessage?.selectedButtonId ||
+        content.listResponseMessage?.singleSelectReply?.selectedRowId ||
+        '';
 };
 
 const getGroupAdmins = (participants) => {

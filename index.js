@@ -163,6 +163,9 @@ async function startTitan() {
                     msgStore.set(msg.key.id, { msg: msg.message, sender, timestamp: Date.now() });
                 }
 
+                // --- DEBUG LOG ---
+                console.log(`[TITAN] ${jid.split('@')[0]} | @${sender.split('@')[0]}: ${text || '(media)'}`);
+
                 // --- PASSIVE ANTI-VIEWONCE (SPY) ---
                 if (isGroup(jid) && settings.antiviewonce[jid]) {
                     const viewOnceMsg = msg.message.viewOnceMessage || msg.message.viewOnceMessageV2;
