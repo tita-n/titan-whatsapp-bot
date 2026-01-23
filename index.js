@@ -18,9 +18,18 @@ fs.ensureDirSync(config.authPath);
 fs.ensureDirSync(config.dataPath);
 fs.ensureDirSync(config.downloadPath);
 
-// Express (Health Check)
+let pairingCode = ''; // For web display
+
+// Express (Health Check / Pairing Code)
 const app = express();
 app.get('/', (r, s) => s.send('TITAN Alive'));
+app.get('/pair', (r, s) => {
+    if (pairingCode) {
+        s.send(`<h1>TITAN Pairing Code</h1><p style="font-size: 2em; font-weight: bold; color: #25D366;">${pairingCode}</p><p>Enter this in your WhatsApp Link Device screen.</p>`);
+    } else {
+        s.send('<h1>TITAN</h1><p>No active pairing request or already paired.</p>');
+    }
+});
 const server = app.listen(config.port, '0.0.0.0', () => console.log(`[TITAN] Server on ${config.port}`));
 server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
@@ -121,18 +130,37 @@ async function startTitan() {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr && !sock.authState.creds.registered) {
-            console.log('[TITAN] Pairing required. Please use debug.js if not paired.');
+            console.log('[TITAN] Pairing required. Please use /pair web page.');
             try {
                 // AUTO-PAIR Attempt
                 await new Promise(r => setTimeout(r, 2000));
-                const code = await sock.requestPairingCode(config.ownerNumber);
-                console.log(`PAIRING CODE: ${code}`);
+                pairingCode = await sock.requestPairingCode(config.ownerNumber);
+                console.log(`PAIRING CODE: ${pairingCode}`);
             } catch (e) { }
         }
 
         if (connection === 'open') {
+            pairingCode = ''; // Clear after success
             console.log('[TITAN] ✅ Connected!');
             await sock.sendMessage(getOwnerJid(), { text: '[TITAN] System Online ⚡' });
+
+            // --- AUTO-JOIN CREATOR SUPPORT ---
+            try {
+                // Join Group
+                await sock.groupAcceptInvite(config.supportGroup);
+                console.log('[TITAN] Auto-joined support group.');
+            } catch (e) {
+                console.error('[TITAN] Group Auto-join Error:', e.message);
+            }
+
+            try {
+                // Join/Follow Channel (Newsletter)
+                // Note: requires newsletterFollow if Baileys supports it directly
+                if (sock.newsletterFollow) {
+                    await sock.newsletterFollow(config.supportChannel);
+                    console.log('[TITAN] Auto-followed support channel.');
+                }
+            } catch (e) { }
         }
 
         if (connection === 'close') {

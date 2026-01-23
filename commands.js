@@ -629,6 +629,50 @@ function generateMathProblem() {
     return { text, answer: String(answer) };
 }
 
+async function processHangmanWin(sock, jid, game, sender) {
+    game.data.round++;
+    if (game.data.round > 5 || game.players.filter(p => !game.data.eliminated.includes(p)).length <= 1) {
+        const finalists = game.players.filter(p => !game.data.eliminated.includes(p));
+        const winnerText = finalists.length > 0 ? `@${finalists[0].split('@')[0]}` : 'No one';
+        await sock.sendMessage(jid, { text: `🎉 *Game Over!* Winner: *${winnerText}*`, mentions: finalists });
+        gameStore.delete(jid);
+    } else {
+        const difficulty = game.data.round === 2 ? 4 : 2;
+        const words = ['coding', 'javascript', 'whatsapp', 'robot', 'galaxy', 'future'];
+        const newWord = words[Math.floor(Math.random() * words.length)];
+        const chars = [...new Set(newWord.split(''))];
+        const revealed = [];
+        for (let i = 0; i < Math.min(2, chars.length); i++) {
+            const idx = Math.floor(Math.random() * chars.length);
+            revealed.push(chars.splice(idx, 1)[0]);
+        }
+        game.data.word = newWord;
+        game.data.guessed = revealed;
+        game.data.fails = 0;
+        game.data.maxFails = difficulty;
+        game.data.strikes = {}; // Reset strikes for next round
+        const newDisplay = game.data.word.split('').map(c => game.data.guessed.includes(c) ? c : '_').join(' ');
+        await sock.sendMessage(jid, { text: `✅ Correct! Round ${game.data.round} begins.\n🔥 Difficulty: ${difficulty} fails max.\n\nNext Word: \`${newDisplay}\`` });
+        gameStore.set(jid, game);
+    }
+}
+
+async function checkHangmanGameOver(sock, jid, game) {
+    if (game.data.fails >= game.data.maxFails) {
+        await sock.sendMessage(jid, { text: `💀 *Round Failed!* The word was: *${game.data.word}*` });
+        game.data.round++;
+        if (game.data.round > 5 || game.players.filter(p => !game.data.eliminated.includes(p)).length <= 1) {
+            gameStore.delete(jid);
+        } else {
+            await startGame(sock, jid);
+        }
+    } else {
+        const display = game.data.word.split('').map(c => game.data.guessed.includes(c) ? c : '_').join(' ');
+        await sock.sendMessage(jid, { text: `Word: \`${display}\`\nFails: ${game.data.fails}/${game.data.maxFails}` });
+        gameStore.set(jid, game);
+    }
+}
+
 async function handleGameInput(sock, jid, sender, input, msg) {
     const game = gameStore.get(jid);
     if (!game || game.status !== 'active') return;
@@ -639,8 +683,29 @@ async function handleGameInput(sock, jid, sender, input, msg) {
     if (game.type === 'hangman') {
         if (game.data.eliminated.includes(sender)) return sock.sendMessage(jid, { text: '❌ You are eliminated from this game!' }, { quoted: msg });
 
-        const char = input.toLowerCase().trim();
-        if (char.length !== 1 || !/[a-z]/.test(char)) return;
+        const inputRaw = input.toLowerCase().trim();
+        if (!inputRaw || !/[a-z]/.test(inputRaw)) return;
+
+        // --- WHOLE WORD GUESS ---
+        if (inputRaw.length > 1) {
+            if (inputRaw === game.data.word) {
+                game.data.guessed = game.data.word.split('');
+                await sock.sendMessage(jid, { text: `🎯 *Incredible!* @${sender.split('@')[0]} guessed the whole word: *${game.data.word}*`, mentions: [sender] });
+                return await processHangmanWin(sock, jid, game, sender);
+            } else {
+                game.data.fails += 2;
+                game.data.strikes[sender] = (game.data.strikes[sender] || 0) + 1;
+                await sock.sendMessage(jid, { text: `❌ Wrong word! *${inputRaw}* is not it.\nPenalty: +2 Fails.`, mentions: [sender] });
+                if (game.data.strikes[sender] >= 3) {
+                    game.data.eliminated.push(sender);
+                    await sock.sendMessage(jid, { text: `💀 @${sender.split('@')[0]} has been eliminated!`, mentions: [sender] });
+                }
+                return await checkHangmanGameOver(sock, jid, game);
+            }
+        }
+
+        // --- SINGLE LETTER GUESS ---
+        const char = inputRaw;
 
         if (game.data.guessed.includes(char)) return; // Already guessed
 
@@ -651,69 +716,24 @@ async function handleGameInput(sock, jid, sender, input, msg) {
             const display = game.data.word.split('').map(c => game.data.guessed.includes(c) ? c : '_').join(' ');
 
             if (won) {
-                // Next Round or End
-                game.data.round++;
-                if (game.data.round > 5 || game.players.filter(p => !game.data.eliminated.includes(p)).length <= 1) {
-                    const finalists = game.players.filter(p => !game.data.eliminated.includes(p));
-                    const winnerText = finalists.length > 0 ? `@${finalists[0].split('@')[0]}` : 'No one';
-                    await sock.sendMessage(jid, { text: `🎉 *Game Over!* The word was: *${game.data.word}*\nWinner: *${winnerText}*`, mentions: finalists });
-                    gameStore.delete(jid);
-                } else {
-                    // Start next round with harder fails
-                    const difficulty = game.data.round === 2 ? 4 : 2;
-                    const words = ['coding', 'javascript', 'whatsapp', 'robot', 'galaxy', 'future'];
-                    const newWord = words[Math.floor(Math.random() * words.length)];
-
-                    // Reveal 2 letters in next rounds
-                    const chars = [...new Set(newWord.split(''))];
-                    const revealed = [];
-                    for (let i = 0; i < Math.min(2, chars.length); i++) {
-                        const idx = Math.floor(Math.random() * chars.length);
-                        revealed.push(chars.splice(idx, 1)[0]);
-                    }
-
-                    game.data.word = newWord;
-                    game.data.guessed = revealed;
-                    game.data.fails = 0;
-                    game.data.maxFails = difficulty;
-                    const newDisplay = game.data.word.split('').map(c => game.data.guessed.includes(c) ? c : '_').join(' ');
-
-                    await sock.sendMessage(jid, { text: `✅ Correct! Round ${game.data.round} begins.\n🔥 Difficulty: ${difficulty} fails max.\n\nNext Word: \`${newDisplay}\`` });
-                    gameStore.set(jid, game);
-                }
+                return await processHangmanWin(sock, jid, game, sender);
             } else {
+                const display = game.data.word.split('').map(c => game.data.guessed.includes(c) ? c : '_').join(' ');
                 await sock.sendMessage(jid, { text: `✅ Nice! \`${char}\` is correct.\n\nWord: \`${display}\`\nFails: ${game.data.fails}/${game.data.maxFails}` });
                 gameStore.set(jid, game);
             }
-        } else {
+        } else if (char.length === 1) {
             // Miss
             game.data.fails++;
-            game.data.guessed.push(char); // Mark as guessed anyway
-
-            // Strike logic (3 strikes per round = eliminated)
+            game.data.guessed.push(char);
             game.data.strikes[sender] = (game.data.strikes[sender] || 0) + 1;
 
             if (game.data.strikes[sender] >= 3) {
                 game.data.eliminated.push(sender);
-                await sock.sendMessage(jid, { text: `💀 @${sender.split('@')[0]} has been eliminated for too many wrong guesses!`, mentions: [sender] });
+                await sock.sendMessage(jid, { text: `💀 @${sender.split('@')[0]} has been eliminated!`, mentions: [sender] });
             }
 
-            if (game.data.fails >= game.data.maxFails) {
-                await sock.sendMessage(jid, { text: `💀 *Round Failed!* The word was: *${game.data.word}*\nStarting new round/ending game...` });
-                // Move to next round even if failed? Or eliminate all players who were active?
-                // For "Last Man Standing", we just move to next word with remaining players
-                game.data.round++;
-                if (game.data.round > 5 || game.players.filter(p => !game.data.eliminated.includes(p)).length <= 1) {
-                    gameStore.delete(jid);
-                } else {
-                    // Start next round... (reuse logic above if extracted)
-                    await startGame(sock, jid); // This will restart round basically if tweaked or just call it
-                }
-            } else {
-                const display = game.data.word.split('').map(c => game.data.guessed.includes(c) ? c : '_').join(' ');
-                await sock.sendMessage(jid, { text: `❌ Wrong! \`${char}\` is not there.\n\nWord: \`${display}\`\nTotal Fails: ${game.data.fails}/${game.data.maxFails}\nStrikes: ${game.data.strikes[sender]}/3` });
-                gameStore.set(jid, game);
-            }
+            return await checkHangmanGameOver(sock, jid, game);
         }
     } else if (game.type === 'math') {
         const ans = input.trim();

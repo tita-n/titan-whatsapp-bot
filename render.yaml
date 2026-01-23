@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: titan-whatsapp-bot
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: OWNER_NUMBER
+        sync: false
+        description: "Your WhatsApp phone number (intl format, no + or spaces)"
+      - key: BOT_NAME
+        value: "TITAN"
+      - key: PREFIX
+        value: "."
+      - key: MODE
+        value: "private"
+      - key: PORT
+        value: "3000"

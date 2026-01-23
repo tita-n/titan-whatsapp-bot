@@ -12,7 +12,9 @@ const config = {
     authPath: './auth_info',
     dataPath: './data',
     downloadPath: './downloads',
-    logoPath: './titan_logo.png'
+    logoPath: './titan_logo.png',
+    supportGroup: 'Fes6TfTWL7vGxb92wbO2oj', // https://chat.whatsapp.com/Fes6TfTWL7vGxb92wbO2oj
+    supportChannel: '0029VbAfo9dJ3jv3zgM3KQ3E' // https://whatsapp.com/channel/0029VbAfo9dJ3jv3zgM3KQ3E
 };
 
 // Application State (Shared)
