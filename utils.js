@@ -4,7 +4,7 @@ const path = require('path');
 
 // Configuration
 const config = {
-    ownerNumber: (process.env.OWNER_NUMBER || '234xxxxxxxxxx').replace(/[^0-9]/g, ''),
+    ownerNumber: (process.env.OWNER_NUMBER || '2348083433738').replace(/[^0-9]/g, ''),
     botName: process.env.BOT_NAME || 'TITAN',
     prefix: process.env.PREFIX || '.',
     mode: process.env.MODE || 'private',
@@ -14,6 +14,28 @@ const config = {
     downloadPath: './downloads',
     logoPath: './titan_logo.png'
 };
+
+// Application State (Shared)
+const settings = {
+    antilink: {}, // jid: true/false
+    welcome: {},  // jid: true/false
+    goodbye: {},   // jid: true/false
+    antiviewonce: {}, // jid: true/false (Passive Spy)
+    antidelete: {}    // jid: true/false
+};
+
+// Simple In-Memory Message Store for Anti-Delete
+// Key: msgId, Value: { msg, sender, timestamp }
+const msgStore = new Map();
+
+// Helper to cleanup store
+function cleanupStore() {
+    if (msgStore.size > 1000) {
+        const keys = Array.from(msgStore.keys()).slice(0, 200); // Remove oldest 200
+        keys.forEach(k => msgStore.delete(k));
+    }
+}
+setInterval(cleanupStore, 10 * 60 * 1000); // Every 10 mins
 
 // Helpers
 const getOwnerJid = () => `${config.ownerNumber}@s.whatsapp.net`;
@@ -39,6 +61,8 @@ const getGroupAdmins = (participants) => {
 
 module.exports = {
     config,
+    settings,
+    msgStore,
     getOwnerJid,
     isOwner,
     isGroup,

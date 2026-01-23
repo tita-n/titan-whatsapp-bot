@@ -10,7 +10,7 @@ const fs = require('fs-extra');
 const pino = require('pino');
 
 // Modules
-const { config, isOwner, isGroup, getMessageText, getOwnerJid } = require('./utils');
+const { config, isOwner, isGroup, getMessageText, getOwnerJid, settings, msgStore } = require('./utils');
 const { handleCommand, handleAntiLink } = require('./commands');
 
 // Ensure dirs
@@ -44,6 +44,71 @@ async function startTitan() {
     });
 
     sock.ev.on('creds.update', saveCreds);
+
+    // Group Participants Update (Welcome/Goodbye)
+    sock.ev.on('group-participants.update', async (update) => {
+        try {
+            const { id, participants, action } = update;
+
+            if (action === 'add' && settings.welcome[id]) {
+                // Fetch group Metadata for name
+                let groupName = 'Group';
+                try {
+                    const meta = await sock.groupMetadata(id);
+                    groupName = meta.subject;
+                } catch (e) { }
+
+                for (const participant of participants) {
+                    const text = `Welcome @${participant.split('@')[0]} to *${groupName}*! 👋\nRead the description to stay safe.`;
+                    const ppUrl = await sock.profilePictureUrl(participant, 'image').catch(() => null);
+
+                    if (ppUrl) {
+                        await sock.sendMessage(id, { image: { url: ppUrl }, caption: text, mentions: [participant] });
+                    } else {
+                        await sock.sendMessage(id, { text, mentions: [participant] });
+                    }
+                }
+            }
+
+            if (action === 'remove' && settings.goodbye[id]) {
+                for (const participant of participants) {
+                    const text = `Goodbye @${participant.split('@')[0]} 👋`;
+                    await sock.sendMessage(id, { text, mentions: [participant] });
+                }
+            }
+
+        } catch (e) {
+            console.error('[TITAN] Group Update Error:', e);
+        }
+    });
+
+    // Anti-Delete Listener (Messages Update)
+    sock.ev.on('messages.update', async (updates) => {
+        for (const update of updates) {
+            if (update.update.message && update.update.message.protocolMessage && update.update.message.protocolMessage.type === 0) {
+                // Type 0 is REVOKE (Delete)
+                const key = update.key;
+                const jid = key.remoteJid;
+
+                if (settings.antidelete[jid]) {
+                    const deletedMsg = msgStore.get(key.id);
+                    if (deletedMsg) {
+                        const { msg, sender } = deletedMsg;
+                        const caption = `🗑️ *Anti-Delete Detected*\nSender: @${sender.split('@')[0]}\nRecovered Content:`;
+
+                        // Try extract text
+                        const text = getMessageText({ message: msg });
+                        if (text) {
+                            await sock.sendMessage(jid, { text: `${caption}\n\n${text}`, mentions: [sender] });
+                        } else {
+                            // Resend media (basic support)
+                            await sock.sendMessage(jid, { forward: { key: { remoteJid: jid, id: key.id }, message: msg }, caption: caption, mentions: [sender] });
+                        }
+                    }
+                }
+            }
+        }
+    });
 
     // Connection Logic
     sock.ev.on('connection.update', async (update) => {
@@ -92,9 +157,34 @@ async function startTitan() {
                 const text = getMessageText(msg).trim();
                 const fromMe = msg.key.fromMe;
 
+                // --- ANTI-DELETE STORAGE ---
+                // Store all Group messages that are NOT from me
+                if (jid.endsWith('@g.us') && !fromMe) {
+                    msgStore.set(msg.key.id, { msg: msg.message, sender, timestamp: Date.now() });
+                }
+
+                // --- PASSIVE ANTI-VIEWONCE (SPY) ---
+                if (isGroup(jid) && settings.antiviewonce[jid]) {
+                    const viewOnceMsg = msg.message.viewOnceMessage || msg.message.viewOnceMessageV2;
+                    if (viewOnceMsg) {
+                        try {
+                            const buffer = await downloadMediaMessage({ message: viewOnceMsg }, 'buffer', {});
+                            const content = viewOnceMsg.message;
+                            const mediaType = Object.keys(content).find(k => k.endsWith('Message'));
+
+                            const caption = `🕵️ *Anti-ViewOnce Spy*\nGroup: ${jid}\nSender: @${sender.split('@')[0]}`;
+
+                            if (mediaType.includes('image')) {
+                                await sock.sendMessage(getOwnerJid(), { image: buffer, caption, mentions: [sender] });
+                            } else if (mediaType.includes('video')) {
+                                await sock.sendMessage(getOwnerJid(), { video: buffer, caption, mentions: [sender] });
+                            }
+                        } catch (e) { console.error('[TITAN] Anti-VV Spy Error', e); }
+                    }
+                }
+
                 // 0. Anti-Link Check (Before anything else)
                 if (isGroup(jid)) {
-                    // This function handles the kick logic internally
                     if (await handleAntiLink(sock, msg, jid, text, sender)) continue;
                 }
 

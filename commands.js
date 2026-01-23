@@ -1,19 +1,15 @@
 const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 const moment = require('moment');
 const fs = require('fs-extra');
-const { config, getOwnerJid, isGroup, getGroupAdmins } = require('./utils');
-
-// Feature: AntiLink Storage (Memory-based for speed)
-const antilinkSettings = {};
+const { config, settings, getOwnerJid, isGroup, getGroupAdmins } = require('./utils');
 
 async function handleAntiLink(sock, msg, jid, text, sender) {
-    if (!antilinkSettings[jid]) return false; // Not enabled
+    if (!settings.antilink[jid]) return false; // Use Shared Settings
 
     // Regex for WhatsApp links
     const linkRegex = /chat\.whatsapp\.com\/[0-9A-Za-z]{20,}/i;
-    if (!linkRegex.test(text)) return false; // No link found
+    if (!linkRegex.test(text)) return false;
 
-    // Verify Admin Status logic only when link is detected
     try {
         const meta = await sock.groupMetadata(jid);
         const admins = getGroupAdmins(meta.participants);
@@ -22,10 +18,9 @@ async function handleAntiLink(sock, msg, jid, text, sender) {
         const isSenderAdmin = admins.includes(sender);
         const isBotAdmin = admins.includes(botJid);
 
-        if (isSenderAdmin) return false; // Admin safe
-        if (!isBotAdmin) return false;   // Bot can't kick
+        if (isSenderAdmin) return false;
+        if (!isBotAdmin) return false;
 
-        // Delete & Kick
         await sock.sendMessage(jid, { delete: msg.key });
         await sock.groupParticipantsUpdate(jid, [sender], 'remove');
         return true;
@@ -36,14 +31,10 @@ async function handleAntiLink(sock, msg, jid, text, sender) {
 }
 
 async function handleCommand(sock, msg, jid, sender, cmd, args, text) {
-    // Debug Log
-    console.log(`[DEBUG] Handling command: ${cmd} in ${jid} from ${sender}`);
-
     const mentions = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
     const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
     const quotedSender = msg.message?.extendedTextMessage?.contextInfo?.participant;
 
-    // Target resolution (Mention > Quoted > Args)
     const getTarget = () => {
         if (mentions.length > 0) return mentions[0];
         if (quotedSender) return quotedSender;
@@ -80,6 +71,8 @@ Prefix: *${config.prefix}*
 *${config.prefix}tagall [msg]* - Tag everyone
 *${config.prefix}hidetag [msg]* - Invisible tag
 *${config.prefix}broadcast [msg]* - Owner BC
+*${config.prefix}welcome [on/off]* - Auto welcome
+*${config.prefix}goodbye [on/off]* - Auto goodbye
 
 *👮‍♂️ Admin*
 *${config.prefix}kick [user]* - Remove user
@@ -171,14 +164,122 @@ Prefix: *${config.prefix}*
 
         case 'antilink':
             if (!isGroup(jid)) return sendWithLogo('❌ Groups only!');
-            if (!args[0]) return sendWithLogo(`Antilink is currently: *${antilinkSettings[jid] ? 'ON' : 'OFF'}*\nUsage: ${config.prefix}antilink on/off`);
-
+            // Toggle Logic if no arg, or context aware
+            if (!args[0]) {
+                const current = settings.antilink[jid];
+                settings.antilink[jid] = !current;
+                await sendWithLogo(settings.antilink[jid] ? '✅ Antilink Enabled.' : '❌ Antilink Disabled.');
+                return;
+            }
             if (args[0] === 'on') {
-                antilinkSettings[jid] = true;
+                settings.antilink[jid] = true;
                 await sendWithLogo('✅ Antilink Enabled.');
             } else if (args[0] === 'off') {
-                antilinkSettings[jid] = false;
+                settings.antilink[jid] = false;
                 await sendWithLogo('❌ Antilink Disabled.');
+            }
+            break;
+
+        case 'welcome':
+            if (!isGroup(jid)) return sendWithLogo('❌ Groups only!');
+            if (!args[0]) {
+                const current = settings.welcome[jid];
+                settings.welcome[jid] = !current;
+                await sendWithLogo(settings.welcome[jid] ? '✅ Welcome msg Enabled.' : '❌ Welcome msg Disabled.');
+                return;
+            }
+            if (args[0] === 'on') {
+                settings.welcome[jid] = true;
+                await sendWithLogo('✅ Welcome msg Enabled.');
+            } else if (args[0] === 'off') {
+                settings.welcome[jid] = false;
+                await sendWithLogo('❌ Welcome msg Disabled.');
+            }
+            break;
+
+        case 'goodbye':
+            if (!isGroup(jid)) return sendWithLogo('❌ Groups only!');
+            if (!args[0]) {
+                const current = settings.goodbye[jid];
+                settings.goodbye[jid] = !current;
+                await sendWithLogo(settings.goodbye[jid] ? '✅ Goodbye msg Enabled.' : '❌ Goodbye msg Disabled.');
+                return;
+            }
+            if (args[0] === 'on') {
+                settings.goodbye[jid] = true;
+                await sendWithLogo('✅ Goodbye msg Enabled.');
+            } else if (args[0] === 'off') {
+                settings.goodbye[jid] = false;
+                await sendWithLogo('❌ Goodbye msg Disabled.');
+            }
+            break;
+
+        /* NEW ANTI-FEATURES */
+        case 'vv':
+        case 'retrieve':
+            try {
+                const targetMsg = quoted || msg.message;
+                const viewOnceMsg = targetMsg.viewOnceMessage || targetMsg.viewOnceMessageV2;
+
+                if (!viewOnceMsg) return sendWithLogo('❌ Reply to a ViewOnce message.');
+
+                const content = viewOnceMsg.message;
+                const mediaType = Object.keys(content).find(k => k.endsWith('Message'));
+                const media = content[mediaType];
+
+                if (!media) return sendWithLogo('❌ No media found.');
+
+                // Download
+                const buffer = await downloadMediaMessage({ message: viewOnceMsg }, 'buffer', {});
+
+                // Send to USER DM
+                if (mediaType.includes('image')) {
+                    await sock.sendMessage(sender, { image: buffer, caption: '🙈 Recovered ViewOnce' });
+                } else if (mediaType.includes('video')) {
+                    await sock.sendMessage(sender, { video: buffer, caption: '🙈 Recovered ViewOnce' });
+                }
+
+                await sendWithLogo('✅ Sent to your DM.');
+
+            } catch (e) {
+                console.error('[TITAN] VV Error:', e);
+                await sendWithLogo('❌ Failed to retrieve.');
+            }
+            break;
+
+        case 'antiviewonce':
+        case 'antivv':
+            if (!isGroup(jid)) return sendWithLogo('❌ Groups only!');
+            if (!args[0]) {
+                const current = settings.antiviewonce[jid];
+                settings.antiviewonce[jid] = !current;
+                await sendWithLogo(settings.antiviewonce[jid] ? '✅ Spy Mode Updated: Pasive Anti-ViewOnce Enabled.' : '❌ Spy Mode Disabled.');
+                return;
+            }
+            if (args[0] === 'on') {
+                settings.antiviewonce[jid] = true;
+                await sendWithLogo('✅ Spy Mode Enabled.');
+            } else if (args[0] === 'off') {
+                settings.antiviewonce[jid] = false;
+                await sendWithLogo('❌ Spy Mode Disabled.');
+            }
+            break;
+
+        case 'antidelete':
+        case 'antidel':
+            if (!isGroup(jid)) return sendWithLogo('❌ Groups only!');
+            if (!args[0]) {
+                const current = settings.antidelete[jid];
+                settings.antidelete[jid] = !current;
+                await sendWithLogo(settings.antidelete[jid] ? '✅ Anti-Delete Enabled.' : '❌ Anti-Delete Disabled.');
+                return;
+            }
+            if (args[0] === 'on') {
+                settings.antidelete[jid] = true;
+                await sendWithLogo('✅ Anti-Delete Enabled.');
+            } else if (args[0] === 'off') {
+                settings.antidelete[jid] = false;
+                await sendWithLogo('❌ Anti-Delete Disabled.');
             }
             break;
 
