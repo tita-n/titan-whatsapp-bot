@@ -19,13 +19,19 @@ fs.ensureDirSync(config.dataPath);
 fs.ensureDirSync(config.downloadPath);
 
 let pairingCode = ''; // For web display
+let isPairingRequested = false; // Flag to prevent multiple requests
 
 // Express (Health Check / Pairing Code)
 const app = express();
 app.get('/', (r, s) => s.send('TITAN Alive'));
 app.get('/pair', (r, s) => {
+    if (r.query.reset === 'true') {
+        isPairingRequested = false;
+        pairingCode = '';
+        return s.send('<h1>TITAN Pairing Reset</h1><p>Requesting new code... Refresh in a few seconds.</p>');
+    }
     if (pairingCode) {
-        s.send(`<h1>TITAN Pairing Code</h1><p style="font-size: 2em; font-weight: bold; color: #25D366;">${pairingCode}</p><p>Enter this in your WhatsApp Link Device screen.</p>`);
+        s.send(`<h1>TITAN Pairing Code</h1><p style="font-size: 2em; font-weight: bold; color: #25D366;">${pairingCode}</p><p>Enter this in your WhatsApp Link Device screen.</p><hr><a href="/pair?reset=true">Get New Code</a>`);
     } else {
         s.send('<h1>TITAN</h1><p>No active pairing request or already paired.</p>');
     }
@@ -129,18 +135,26 @@ async function startTitan() {
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
-        if (qr && !sock.authState.creds.registered) {
-            console.log('[TITAN] Pairing required. Please use /pair web page.');
+        if (qr && !sock.authState.creds.registered && !isPairingRequested) {
+            isPairingRequested = true;
+            console.log(`[TITAN] Pairing required for number: ${config.ownerNumber}`);
+            console.log('[TITAN] Please use /pair web page to get the code.');
             try {
                 // AUTO-PAIR Attempt
                 await new Promise(r => setTimeout(r, 2000));
                 pairingCode = await sock.requestPairingCode(config.ownerNumber);
-                console.log(`PAIRING CODE: ${pairingCode}`);
-            } catch (e) { }
+                console.log(`╔════════════════════════════════════╗`);
+                console.log(`║   PAIRING CODE: ${pairingCode}       ║`);
+                console.log(`╚════════════════════════════════════╝`);
+            } catch (e) {
+                console.error('[TITAN] Pairing Request Error:', e);
+                isPairingRequested = false; // Reset on failure
+            }
         }
 
         if (connection === 'open') {
             pairingCode = ''; // Clear after success
+            isPairingRequested = false;
             console.log('[TITAN] ✅ Connected!');
             await sock.sendMessage(getOwnerJid(), { text: '[TITAN] System Online ⚡' });
 
