@@ -8,7 +8,7 @@ const config = {
     botName: process.env.BOT_NAME || 'TITAN',
     prefix: process.env.PREFIX || '.',
     mode: process.env.MODE || 'private',
-    port: process.env.PORT || 3000,
+    port: process.env.PORT ? parseInt(process.env.PORT.toString().trim()) : 3000,
     authPath: './auth_info',
     dataPath: './data',
     downloadPath: './downloads',
@@ -21,15 +21,21 @@ let settings = {
     welcome: {},  // jid: true/false
     goodbye: {},   // jid: true/false
     antiviewonce: {}, // jid: true/false (Passive Spy)
-    antidelete: {}    // jid: true/false
+    antidelete: {},    // jid: true/false
+    antispam: {}       // jid: true/false
 };
+
+// Application Stores
+const msgStore = new Map();
+const spamTracker = new Map();
+const gameStore = new Map();
 
 const settingsPath = path.join(config.dataPath, 'settings.json');
 const msgStorePath = path.join(config.dataPath, 'messages.json');
 
-const saveSettings = () => {
+const saveSettings = async () => {
     try {
-        fs.writeJsonSync(settingsPath, settings, { spaces: 2 });
+        await fs.writeJson(settingsPath, settings, { spaces: 2 });
     } catch (e) {
         console.error('[TITAN] Failed to save settings:', e);
     }
@@ -47,10 +53,10 @@ const loadSettings = () => {
     }
 };
 
-const saveMsgStore = () => {
+const saveMsgStore = async () => {
     try {
         const data = Array.from(msgStore.entries());
-        fs.writeJsonSync(msgStorePath, data);
+        await fs.writeJson(msgStorePath, data);
     } catch (e) {
         console.error('[TITAN] Failed to save msgStore:', e);
     }
@@ -86,17 +92,19 @@ process.on('SIGTERM', () => {
 loadSettings();
 loadMsgStore();
 
-// Simple In-Memory Message Store for Anti-Delete
-// Key: msgId, Value: { msg, sender, timestamp }
-const msgStore = new Map();
+// Helpers
 
 // Helper to cleanup store
 function cleanupStore() {
+    // Msg Store Cleanup
     if (msgStore.size > 1000) {
         const keys = Array.from(msgStore.keys()).slice(0, 200); // Remove oldest 200
         keys.forEach(k => msgStore.delete(k));
         saveMsgStore(); // Save after cleanup
     }
+
+    // Spam Tracker Periodic Cleanup (Clear every 10 mins)
+    spamTracker.clear();
 }
 setInterval(cleanupStore, 10 * 60 * 1000); // Every 10 mins
 
@@ -127,6 +135,24 @@ const getMessageText = (msg) => {
         '';
 };
 
+// Metadata Cache (JID -> { data, timestamp })
+const metadataCache = new Map();
+
+const getCachedGroupMetadata = async (sock, jid) => {
+    const cached = metadataCache.get(jid);
+    if (cached && (Date.now() - cached.timestamp < 5 * 60 * 1000)) { // 5 min cache
+        return cached.data;
+    }
+    try {
+        const meta = await sock.groupMetadata(jid);
+        metadataCache.set(jid, { data: meta, timestamp: Date.now() });
+        return meta;
+    } catch (e) {
+        console.error('[TITAN] Group Metadata Fetch Error:', e);
+        return null;
+    }
+};
+
 const getGroupAdmins = (participants) => {
     return participants.filter(p => p.admin === 'admin' || p.admin === 'superadmin').map(p => p.id);
 };
@@ -136,9 +162,12 @@ module.exports = {
     settings,
     saveSettings,
     msgStore,
+    spamTracker,
+    gameStore,
     getOwnerJid,
     isOwner,
     isGroup,
     getMessageText,
-    getGroupAdmins
+    getGroupAdmins,
+    getCachedGroupMetadata
 };

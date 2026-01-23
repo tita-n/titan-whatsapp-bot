@@ -10,7 +10,7 @@ const fs = require('fs-extra');
 const pino = require('pino');
 
 // Modules
-const { config, isOwner, isGroup, getMessageText, getOwnerJid, settings, msgStore } = require('./utils');
+const { config, isOwner, isGroup, getMessageText, getOwnerJid, settings, msgStore, spamTracker, gameStore, getCachedGroupMetadata } = require('./utils');
 const { handleCommand, handleAntiLink } = require('./commands');
 
 // Ensure dirs
@@ -21,7 +21,13 @@ fs.ensureDirSync(config.downloadPath);
 // Express (Health Check)
 const app = express();
 app.get('/', (r, s) => s.send('TITAN Alive'));
-app.listen(config.port, '0.0.0.0', () => console.log(`[TITAN] Server on ${config.port}`));
+const server = app.listen(config.port, '0.0.0.0', () => console.log(`[TITAN] Server on ${config.port}`));
+server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.error(`[TITAN] Port ${config.port} is already in use.`);
+        process.exit(1);
+    }
+});
 
 // Main
 async function startTitan() {
@@ -54,7 +60,7 @@ async function startTitan() {
                 // Fetch group Metadata for name
                 let groupName = 'Group';
                 try {
-                    const meta = await sock.groupMetadata(id);
+                    const meta = await getCachedGroupMetadata(sock, id);
                     groupName = meta.subject;
                 } catch (e) { }
 
@@ -189,6 +195,50 @@ async function startTitan() {
                 // 0. Anti-Link Check (Before anything else)
                 if (isGroup(jid)) {
                     if (await handleAntiLink(sock, msg, jid, text, sender)) continue;
+                }
+
+                // --- ANTI-SPAM LOGIC ---
+                if (isGroup(jid) && settings.antispam && settings.antispam[jid] && !fromMe) {
+                    const now = Date.now();
+                    const userSpam = spamTracker.get(`${jid}_${sender}`) || { count: 0, lastMsg: 0, warned: false };
+
+                    if (now - userSpam.lastMsg < 10000) {
+                        userSpam.count++;
+                    } else {
+                        userSpam.count = 1;
+                        userSpam.warned = false;
+                    }
+                    userSpam.lastMsg = now;
+                    spamTracker.set(`${jid}_${sender}`, userSpam);
+
+                    if (userSpam.count >= 5) {
+                        if (!userSpam.warned) {
+                            await sock.sendMessage(jid, { text: `⚠️ @${sender.split('@')[0]}, stop spamming! Next time you'll be removed.`, mentions: [sender] });
+                            userSpam.warned = true;
+                            spamTracker.set(`${jid}_${sender}`, userSpam);
+                        } else if (userSpam.count >= 8) {
+                            // Moderate: Delete or Kick
+                            try {
+                                const meta = await getCachedGroupMetadata(sock, jid);
+                                const admins = meta.participants.filter(p => p.admin).map(p => p.id);
+                                const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+
+                                if (admins.includes(botId) && !admins.includes(sender)) {
+                                    await sock.sendMessage(jid, { text: `🚫 @${sender.split('@')[0]} removed for excessive spamming.`, mentions: [sender] });
+                                    await sock.groupParticipantsUpdate(jid, [sender], 'remove');
+                                }
+                            } catch (e) { console.error('[TITAN] Anti-Spam Action Error', e); }
+                            continue;
+                        }
+                    }
+                }
+
+                // --- GAME INPUT HANDLING ---
+                const game = gameStore.get(jid);
+                if (game && game.status === 'active' && !text.startsWith(config.prefix)) {
+                    // Re-route to handleCommand even without prefix for active games
+                    await handleCommand(sock, msg, jid, sender, `_game_input_`, [], text);
+                    continue;
                 }
 
                 // 1. Identity Check

@@ -2,7 +2,7 @@ const { downloadMediaMessage, downloadContentFromMessage } = require('@whiskeyso
 const moment = require('moment');
 const fs = require('fs-extra');
 const axios = require('axios');
-const { config, settings, saveSettings, getOwnerJid, isGroup, getGroupAdmins } = require('./utils');
+const { config, settings, saveSettings, getOwnerJid, isGroup, getGroupAdmins, spamTracker, gameStore, getCachedGroupMetadata } = require('./utils');
 
 async function handleAntiLink(sock, msg, jid, text, sender) {
     if (!settings.antilink[jid]) return false; // Use Shared Settings
@@ -12,7 +12,7 @@ async function handleAntiLink(sock, msg, jid, text, sender) {
     if (!linkRegex.test(text)) return false;
 
     try {
-        const meta = await sock.groupMetadata(jid);
+        const meta = await getCachedGroupMetadata(sock, jid);
         const admins = getGroupAdmins(meta.participants);
         const botJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
 
@@ -87,8 +87,13 @@ Prefix: *${config.prefix}*
 *${config.prefix}antilink [on/off]* - Auto-kick links
 
 *${config.prefix}sticker* - Create sticker
-*${config.prefix}download [url]* - Sc-Media Downloader (TikTok, IG, YT)
-*${config.prefix}d [url]* - Shortcut for download`;
+*${config.prefix}download [url]* - Sc-Media Downloader
+*${config.prefix}d [url]* - Shortcut for download
+
+*🎮 Games*
+*${config.prefix}hangman* - Start Hangman Lobby
+*${config.prefix}math* - Start Math Quiz Lobby
+*${config.prefix}join* - Join an active lobby`;
             await sendWithLogo(menuText);
             break;
 
@@ -382,6 +387,106 @@ Prefix: *${config.prefix}*
             await sendWithLogo('✅ Broadcast complete.');
             break;
 
+        case 'antispam':
+            if (!isGroup(jid)) return sendWithLogo('❌ Groups only!');
+            if (!args[0]) {
+                const current = settings.antispam ? settings.antispam[jid] : false;
+                if (!settings.antispam) settings.antispam = {};
+                settings.antispam[jid] = !current;
+                saveSettings();
+                await sendWithLogo(settings.antispam[jid] ? '✅ Anti-Spam Enabled.' : '❌ Anti-Spam Disabled.');
+                return;
+            }
+            if (args[0] === 'on') {
+                if (!settings.antispam) settings.antispam = {};
+                settings.antispam[jid] = true;
+                saveSettings();
+                await sendWithLogo('✅ Anti-Spam Enabled.');
+            } else if (args[0] === 'off') {
+                if (!settings.antispam) settings.antispam = {};
+                settings.antispam[jid] = false;
+                saveSettings();
+                await sendWithLogo('❌ Anti-Spam Disabled.');
+            }
+            break;
+
+        /* GAME COMMANDS */
+        case 'hangman':
+        case 'math':
+            if (gameStore.has(jid)) return sendWithLogo('❌ A game is already in progress or lobby is open.');
+
+            const isGroupChat = isGroup(jid);
+            const gameType = cmd === 'hangman' ? 'Hangman' : 'Math Quiz';
+
+            if (isGroupChat) {
+                // LOBBY SYSTEM (5 MINS)
+                const lobbyMsg = await sock.sendMessage(jid, { text: `🎮 *${gameType} Lobby Open!*\n\nAnyone who wants to play has *5 minutes* to join.\n👉 Reply to this message with *.join* to participate!` });
+
+                gameStore.set(jid, {
+                    type: cmd,
+                    status: 'lobby',
+                    players: [sender], // Creator joins automatically
+                    startTime: Date.now(),
+                    lobbyMsgId: lobbyMsg.key.id
+                });
+
+                // Auto-start after 5 mins
+                setTimeout(async () => {
+                    const g = gameStore.get(jid);
+                    if (g && g.status === 'lobby') {
+                        if (g.players.length < 1) { // Normal 2+ but user asked for participation, allow self-play if lonely? 1 is fine for testing
+                            gameStore.delete(jid);
+                            await sock.sendMessage(jid, { text: `⏰ *${gameType} Lobby Expired.* Not enough players joined.` });
+                        } else {
+                            await startGame(sock, jid);
+                        }
+                    }
+                }, 5 * 60 * 1000);
+
+            } else {
+                // DM SYSTEM (Start Immediately)
+                gameStore.set(jid, {
+                    type: cmd,
+                    status: 'active',
+                    players: [sender, 'bot'],
+                    startTime: Date.now(),
+                    data: {}
+                });
+                await startGame(sock, jid);
+            }
+            break;
+
+        case 'join':
+            if (!isGroup(jid)) return;
+            const lobby = gameStore.get(jid);
+            if (!lobby || lobby.status !== 'lobby') return sendWithLogo('❌ No active lobby to join.');
+
+            // Check if replying to the correct lobby message
+            const quotedId = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
+            if (quotedId && quotedId !== lobby.lobbyMsgId) return sendWithLogo('❌ Please reply directly to the Lobby message to join.');
+
+            if (lobby.players.includes(sender)) return sendWithLogo('❌ You are already in the lobby.');
+
+            lobby.players.push(sender);
+            gameStore.set(jid, lobby);
+            await sock.sendMessage(jid, { text: `✅ @${sender.split('@')[0]} joined the lobby! (${lobby.players.length} players total)`, mentions: [sender] }, { quoted: msg });
+            break;
+
+        case 'start':
+            if (!isGroup(jid)) return;
+            const lobbyToStart = gameStore.get(jid);
+            if (!lobbyToStart || lobbyToStart.status !== 'lobby') return sendWithLogo('❌ No lobby to start.');
+
+            if (lobbyToStart.players[0] !== sender && !isOwner(sender)) return sendWithLogo('❌ Only the game creator can start early.');
+
+            await startGame(sock, jid);
+            break;
+
+        case '_game_input_':
+            // Logic for guesses/answers
+            await handleGameInput(sock, jid, sender, text, msg);
+            break;
+
         case 'sticker':
         case 's':
             try {
@@ -398,6 +503,7 @@ Prefix: *${config.prefix}*
                 await sendWithLogo('❌ conversion failed.');
             }
             break;
+
 
         case 'download':
         case 'd':
@@ -467,5 +573,155 @@ Prefix: *${config.prefix}*
 
 // Start time for uptime
 const startTime = Date.now();
+
+// --- GAME HELPERS ---
+
+async function startGame(sock, jid) {
+    const game = gameStore.get(jid);
+    if (!game) return;
+
+    game.status = 'active';
+
+    if (game.type === 'hangman') {
+        const words = ['whatsapp', 'titan', 'baileys', 'javascript', 'coding', 'google', 'deepmind', 'robot', 'future', 'galaxy', 'planet', 'ocean', 'forest', 'mountain', 'hacker', 'binary', 'script', 'server'];
+        const word = words[Math.floor(Math.random() * words.length)];
+
+        // Reveal 3 random distinct letters
+        const chars = [...new Set(word.split(''))];
+        const revealed = [];
+        for (let i = 0; i < Math.min(3, chars.length); i++) {
+            const idx = Math.floor(Math.random() * chars.length);
+            revealed.push(chars.splice(idx, 1)[0]);
+        }
+
+        game.data = {
+            word: word,
+            guessed: revealed,
+            fails: 0,
+            maxFails: 6,
+            round: 1,
+            eliminated: [], // users who are out
+            strikes: {} // user -> wrong guesses count in this round
+        };
+        const display = game.data.word.split('').map(c => game.data.guessed.includes(c) ? c : '_').join(' ');
+        await sock.sendMessage(jid, { text: `🎮 *Hangman Battle Royale: Round 1*\n\nWord: \`${display}\`\nMax Fails: 6\n\n*Anyone in the list can guess a letter. Wrong guesses might eliminate you!*` });
+    } else if (game.type === 'math') {
+        const problem = generateMathProblem();
+        game.data = {
+            problem: problem.text,
+            answer: problem.answer
+        };
+        await sock.sendMessage(jid, { text: `🔢 *Math Quiz Started!*\n\nSolve this: *${game.data.problem}*\n\n*First one to answer correctly wins!*` });
+    }
+    gameStore.set(jid, game);
+}
+
+function generateMathProblem() {
+    const ops = ['+', '-', '*'];
+    const op = ops[Math.floor(Math.random() * ops.length)];
+    const a = Math.floor(Math.random() * 20) + 1;
+    const b = Math.floor(Math.random() * 20) + 1;
+    let text = `${a} ${op} ${b}`;
+    let answer;
+    if (op === '+') answer = a + b;
+    else if (op === '-') answer = a - b;
+    else answer = a * b;
+    return { text, answer: String(answer) };
+}
+
+async function handleGameInput(sock, jid, sender, input, msg) {
+    const game = gameStore.get(jid);
+    if (!game || game.status !== 'active') return;
+
+    const isPlayer = game.players.includes(sender) || game.players.includes('bot');
+    if (!isPlayer) return;
+
+    if (game.type === 'hangman') {
+        if (game.data.eliminated.includes(sender)) return sock.sendMessage(jid, { text: '❌ You are eliminated from this game!' }, { quoted: msg });
+
+        const char = input.toLowerCase().trim();
+        if (char.length !== 1 || !/[a-z]/.test(char)) return;
+
+        if (game.data.guessed.includes(char)) return; // Already guessed
+
+        if (game.data.word.includes(char)) {
+            // Hit
+            game.data.guessed.push(char);
+            const won = game.data.word.split('').every(c => game.data.guessed.includes(c));
+            const display = game.data.word.split('').map(c => game.data.guessed.includes(c) ? c : '_').join(' ');
+
+            if (won) {
+                // Next Round or End
+                game.data.round++;
+                if (game.data.round > 5 || game.players.filter(p => !game.data.eliminated.includes(p)).length <= 1) {
+                    const finalists = game.players.filter(p => !game.data.eliminated.includes(p));
+                    const winnerText = finalists.length > 0 ? `@${finalists[0].split('@')[0]}` : 'No one';
+                    await sock.sendMessage(jid, { text: `🎉 *Game Over!* The word was: *${game.data.word}*\nWinner: *${winnerText}*`, mentions: finalists });
+                    gameStore.delete(jid);
+                } else {
+                    // Start next round with harder fails
+                    const difficulty = game.data.round === 2 ? 4 : 2;
+                    const words = ['coding', 'javascript', 'whatsapp', 'robot', 'galaxy', 'future'];
+                    const newWord = words[Math.floor(Math.random() * words.length)];
+
+                    // Reveal 2 letters in next rounds
+                    const chars = [...new Set(newWord.split(''))];
+                    const revealed = [];
+                    for (let i = 0; i < Math.min(2, chars.length); i++) {
+                        const idx = Math.floor(Math.random() * chars.length);
+                        revealed.push(chars.splice(idx, 1)[0]);
+                    }
+
+                    game.data.word = newWord;
+                    game.data.guessed = revealed;
+                    game.data.fails = 0;
+                    game.data.maxFails = difficulty;
+                    const newDisplay = game.data.word.split('').map(c => game.data.guessed.includes(c) ? c : '_').join(' ');
+
+                    await sock.sendMessage(jid, { text: `✅ Correct! Round ${game.data.round} begins.\n🔥 Difficulty: ${difficulty} fails max.\n\nNext Word: \`${newDisplay}\`` });
+                    gameStore.set(jid, game);
+                }
+            } else {
+                await sock.sendMessage(jid, { text: `✅ Nice! \`${char}\` is correct.\n\nWord: \`${display}\`\nFails: ${game.data.fails}/${game.data.maxFails}` });
+                gameStore.set(jid, game);
+            }
+        } else {
+            // Miss
+            game.data.fails++;
+            game.data.guessed.push(char); // Mark as guessed anyway
+
+            // Strike logic (3 strikes per round = eliminated)
+            game.data.strikes[sender] = (game.data.strikes[sender] || 0) + 1;
+
+            if (game.data.strikes[sender] >= 3) {
+                game.data.eliminated.push(sender);
+                await sock.sendMessage(jid, { text: `💀 @${sender.split('@')[0]} has been eliminated for too many wrong guesses!`, mentions: [sender] });
+            }
+
+            if (game.data.fails >= game.data.maxFails) {
+                await sock.sendMessage(jid, { text: `💀 *Round Failed!* The word was: *${game.data.word}*\nStarting new round/ending game...` });
+                // Move to next round even if failed? Or eliminate all players who were active?
+                // For "Last Man Standing", we just move to next word with remaining players
+                game.data.round++;
+                if (game.data.round > 5 || game.players.filter(p => !game.data.eliminated.includes(p)).length <= 1) {
+                    gameStore.delete(jid);
+                } else {
+                    // Start next round... (reuse logic above if extracted)
+                    await startGame(sock, jid); // This will restart round basically if tweaked or just call it
+                }
+            } else {
+                const display = game.data.word.split('').map(c => game.data.guessed.includes(c) ? c : '_').join(' ');
+                await sock.sendMessage(jid, { text: `❌ Wrong! \`${char}\` is not there.\n\nWord: \`${display}\`\nTotal Fails: ${game.data.fails}/${game.data.maxFails}\nStrikes: ${game.data.strikes[sender]}/3` });
+                gameStore.set(jid, game);
+            }
+        }
+    } else if (game.type === 'math') {
+        const ans = input.trim();
+        if (ans === game.data.answer) {
+            await sock.sendMessage(jid, { text: `🎉 *Correct!* @${sender.split('@')[0]} got it right: *${game.data.answer}*`, mentions: [sender] });
+            gameStore.delete(jid);
+        }
+    }
+}
 
 module.exports = { handleCommand, handleAntiLink };
