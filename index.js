@@ -179,13 +179,18 @@ async function startTitan() {
 
         if (connection === 'close') {
             const reason = lastDisconnect?.error?.output?.statusCode;
-            if (reason === 401 || reason === 405) {
-                console.log('[TITAN] Session Invalid. Re-pair needed.');
-                fs.emptyDirSync(config.authPath);
-                process.exit(1);
-            } else if (reason !== DisconnectReason.loggedOut) {
-                startTitan();
+            console.log(`[TITAN] Connection closed. Reason: ${reason}`);
+
+            const shouldReconnect = reason !== DisconnectReason.loggedOut && reason !== 401 && reason !== 405;
+
+            if (shouldReconnect) {
+                console.log('[TITAN] Reconnecting in 5s...');
+                setTimeout(() => startTitan(), 5000);
             } else {
+                console.log('[TITAN] Session terminated or logged out. Manual intervention required.');
+                if (reason === 401 || reason === 405) {
+                    fs.emptyDirSync(config.authPath);
+                }
                 process.exit(1);
             }
         }

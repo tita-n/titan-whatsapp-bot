@@ -600,11 +600,13 @@ async function startGame(sock, jid) {
             fails: 0,
             maxFails: 6,
             round: 1,
-            eliminated: [], // users who are out
-            strikes: {} // user -> wrong guesses count in this round
+            eliminated: [],
+            strikes: {},
+            currentPlayerIndex: 0 // Track whose turn it is
         };
         const display = game.data.word.split('').map(c => game.data.guessed.includes(c) ? c : '_').join(' ');
-        await sock.sendMessage(jid, { text: `🎮 *Hangman Battle Royale: Round 1*\n\nWord: \`${display}\`\nMax Fails: 6\n\n*Anyone in the list can guess a letter. Wrong guesses might eliminate you!*` });
+        const firstPlayer = game.players[0];
+        await sock.sendMessage(jid, { text: `🎮 *Hangman Battle Royale: Round 1*\n\nWord: \`${display}\`\nMax Fails: 6\n\n👉 Turn: @${firstPlayer.split('@')[0]}\n*Only the current player can guess!*`, mentions: [firstPlayer] });
     } else if (game.type === 'math') {
         const problem = generateMathProblem();
         game.data = {
@@ -631,6 +633,7 @@ function generateMathProblem() {
 
 async function processHangmanWin(sock, jid, game, sender) {
     game.data.round++;
+    game.data.currentPlayerIndex = 0; // Reset turn for new round
     if (game.data.round > 5 || game.players.filter(p => !game.data.eliminated.includes(p)).length <= 1) {
         const finalists = game.players.filter(p => !game.data.eliminated.includes(p));
         const winnerText = finalists.length > 0 ? `@${finalists[0].split('@')[0]}` : 'No one';
@@ -650,9 +653,10 @@ async function processHangmanWin(sock, jid, game, sender) {
         game.data.guessed = revealed;
         game.data.fails = 0;
         game.data.maxFails = difficulty;
-        game.data.strikes = {}; // Reset strikes for next round
+        game.data.strikes = {};
         const newDisplay = game.data.word.split('').map(c => game.data.guessed.includes(c) ? c : '_').join(' ');
-        await sock.sendMessage(jid, { text: `✅ Correct! Round ${game.data.round} begins.\n🔥 Difficulty: ${difficulty} fails max.\n\nNext Word: \`${newDisplay}\`` });
+        const nextP = game.players[0];
+        await sock.sendMessage(jid, { text: `✅ Correct! Round ${game.data.round} begins.\n🔥 Difficulty: ${difficulty} fails max.\n\nNext Word: \`${newDisplay}\`\n👉 Turn: @${nextP.split('@')[0]}`, mentions: [nextP] });
         gameStore.set(jid, game);
     }
 }
@@ -668,7 +672,21 @@ async function checkHangmanGameOver(sock, jid, game) {
         }
     } else {
         const display = game.data.word.split('').map(c => game.data.guessed.includes(c) ? c : '_').join(' ');
-        await sock.sendMessage(jid, { text: `Word: \`${display}\`\nFails: ${game.data.fails}/${game.data.maxFails}` });
+        const nextIdx = (game.data.currentPlayerIndex + 1) % game.players.length;
+        // Skip eliminated (recursive check or simple loop)
+        let found = false;
+        let finalIdx = nextIdx;
+        for (let i = 0; i < game.players.length; i++) {
+            let checkIdx = (nextIdx + i) % game.players.length;
+            if (!game.data.eliminated.includes(game.players[checkIdx])) {
+                finalIdx = checkIdx;
+                found = true;
+                break;
+            }
+        }
+        game.data.currentPlayerIndex = finalIdx;
+        const nextP = game.players[finalIdx];
+        await sock.sendMessage(jid, { text: `Word: \`${display}\`\nFails: ${game.data.fails}/${game.data.maxFails}\n\n👉 Turn: @${nextP.split('@')[0]}`, mentions: [nextP] });
         gameStore.set(jid, game);
     }
 }
@@ -681,6 +699,9 @@ async function handleGameInput(sock, jid, sender, input, msg) {
     if (!isPlayer) return;
 
     if (game.type === 'hangman') {
+        const currentPlayer = game.players[game.data.currentPlayerIndex];
+        if (sender !== currentPlayer) return sock.sendMessage(jid, { text: `⚠️ It's not your turn! Turn: @${currentPlayer.split('@')[0]}`, mentions: [currentPlayer] }, { quoted: msg });
+
         if (game.data.eliminated.includes(sender)) return sock.sendMessage(jid, { text: '❌ You are eliminated from this game!' }, { quoted: msg });
 
         const inputRaw = input.toLowerCase().trim();
