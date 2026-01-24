@@ -12,9 +12,10 @@
 - **🚀 Ultra-Fast**: Response times below 1 second using intelligent metadata caching.
 - **🛡️ Shield Mode**: Advanced Anti-Link and Anti-Spam systems to protect your groups.
 - **🎮 Game On**: Multiplayer "Battle Royale" Hangman and Math Quiz with global rankings.
-- **📥 Media Master**: One-click downloader for TikTok (no watermark), Instagram, YouTube, and Facebook.
-- **🔑 Web Pairing**: View your pairing code instantly at `/pair` without checking logs.
-- **❤️ Support Built-in**: Users automatically support the creator by joining the official community on connection.
+- **keys** Web Pairing: View your pairing code instantly at `/pair` without checking logs.
+- **❤️ Permanent Stay**: Bot generates a **Base64 SESSION_ID** so you stay logged in forever on Render.
+- **🎵 Music Play**: Stream audio directly from YouTube in high quality.
+- **⚡ Hot Updates**: Update the bot instantly with `.update` from your chat.
 
 ---
 
@@ -53,18 +54,33 @@ Speed matters! Be the first to solve the equation to win points.
 
 ---
 
-## 📜 Commands List
+## 🔑 24/7 Persistence (For Render)
+To keep the bot online after Render restarts:
+1. Link your bot once via `/pair`.
+2. The bot will send you a long **Session ID** text in your DM.
+3. Copy that text and add it as an Environment Variable in Render:
+   - **Key**: `SESSION_ID`
+   - **Value**: `Your session string here`
+4. Deploy once more. Your bot is now **immortal**!
+
+---
+
+## 📜 Full Commands List
 
 | Category | Command | Description |
 | :--- | :--- | :--- |
 | **🛠️ Utility** | `.menu` / `.help` | Show the interactive menu. |
 | | `.status` | Check uptime and system health. |
 | | `.ping` | Test message latency. |
+| | `.play [song]` | Search and play music from YouTube. |
+| | `.update` | Instant Git Update and Reboot. |
 | **👮 Admin** | `.kick` / `.remove` | Remove a member (reply/tag). |
 | | `.promote` / `.demote` | Manage group permissions. |
 | | `.mute` / `.unmute` | Close or open the group. |
 | | `.antilink [on/off]` | Auto-remove external links. |
 | | `.antispam [on/off]` | Stop message flooders. |
+| | `.setgroup [code]` | **(Owner)** Change auto-join group. |
+| | `.setchannel [id]` | **(Owner)** Change auto-join channel. |
 | **📥 Media** | `.download [url]` | Multi-platform media downloader. |
 | | `.sticker` | Convert image/video to sticker. |
 | | `.vv` | Recover View-Once (Silent). |
