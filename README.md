@@ -18,29 +18,21 @@
 
 ---
 
-## 🚀 1-Click Deployment (Render)
+## 🚀 Deployment Options
 
-1.  **Fork** this repository to your private GitHub account.
-2.  Click the **Deploy to Render** button above.
-3.  Fill in your **Environment Variables**:
-    *   `OWNER_NUMBER`: Your WhatsApp number (e.g., `2348083433738`)
-    *   `BOT_NAME`: Your bot's custom name.
-4.  Once deployed, visit `https://your-app-name.onrender.com/pair`.
-5.  Link your device using the code shown on the screen. **Done!**
+### 1-Click: Render (Free)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
+- **Status**: Excellent for beginners.
+- **Tip**: Must use [UptimeRobot](https://uptimerobot.com) to keep it alive 24/7.
 
----
+### Bot-Hosting.net (Pterodactyl)
+1.  **Create Server**: Select **Node.js** as the egg.
+2.  **Upload**: Upload all files (skip `node_modules`).
+3.  **Startup**: Ensure the startup command is `node index.js`.
+4.  **Env**: Add `OWNER_NUMBER`, `PREFIX`, etc., in the "Startup" or "Settings" tab.
 
-## 🐳 Docker Deployment (VPS/Local)
-
-For advanced users or VPS hosting:
-
+### 🐳 Docker (VPS)
 ```bash
-# Clone the repository
-git clone https://github.com/tita-n/titan-whatsapp-bot.git
-cd titan-whatsapp-bot
-
-# Edit environment variables in docker-compose.yml
-# Then start the container
 docker-compose up -d
 ```
 

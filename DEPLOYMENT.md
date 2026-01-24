@@ -100,22 +100,35 @@ In your Render service dashboard:
 
 5. Bot should now show "✅ Connected to WhatsApp!" in logs
 
-## Step 5: Set Up UptimeRobot (Keep Alive)
+## Step 5: Set Up UptimeRobot (CRITICAL for 24/7)
 
-Render's free tier spins down after 15 minutes of inactivity. UptimeRobot keeps it alive.
+Render's free tier spins down after 15 minutes of inactivity. **You MUST use UptimeRobot to keep TITAN online.**
 
-1. Go to [UptimeRobot.com](https://uptimerobot.com/) and create free account
-2. Click **"Add New Monitor"**
-3. Configure:
+1.  Go to [UptimeRobot.com](https://uptimerobot.com/) and create free account.
+2.  Click **"Add New Monitor"**.
+3.  Configure:
+    *   **Monitor Type**: HTTP(s)
+    *   **Friendly Name**: TITAN Bot
+    *   **URL**: `https://YOUR-APP-NAME.onrender.com`
+    *   **Monitoring Interval**: 5 minutes
+4.  Click **"Create Monitor"**.
 
-| Setting | Value |
-|---------|-------|
-| **Monitor Type** | HTTP(s) |
-| **Friendly Name** | TITAN Bot |
-| **URL** | `https://YOUR-APP-NAME.onrender.com` |
-| **Monitoring Interval** | 5 minutes |
+### Why is this needed?
+The bot now has an internal **Keep-Alive** system, but Render will still kill the process if it doesn't receive "web traffic" (pings to the URL above).
 
-4. Click **"Create Monitor"**
+---
+
+## 🌩️ Deploying to Bot-Hosting.net (Stable 24/7)
+
+If you find Render too slow or unstable, use **Bot-Hosting.net**:
+
+1.  **Select Node.js Egg**: Choose the latest Node.js version.
+2.  **Upload Files**: Use the File Manager or SFTP to upload your bot files.
+3.  **Startup Command**: Set to `node index.js`.
+4.  **Environment Variables**: Add your `OWNER_NUMBER` and `PREFIX` in the Startup tab.
+5.  **Start**: Click Start and follow the pairing instructions in the console.
+
+---
 
 Your bot URL is shown in Render dashboard, looks like:
 `https://titan-whatsapp-bot-xxxx.onrender.com`

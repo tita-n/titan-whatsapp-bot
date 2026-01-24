@@ -59,9 +59,23 @@ async function startTitan() {
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
         browser: Browsers.macOS('safari'),
-        markOnlineOnConnect: false,
+        markOnlineOnConnect: true,
         connectTimeoutMs: 60000,
+        keepAliveIntervalMs: 20000,
         syncFullHistory: false // Speed up login
+    });
+
+    // --- KEEP ALIVE PING ---
+    const keepAlive = setInterval(async () => {
+        if (sock.user) {
+            try {
+                await sock.sendPresenceUpdate('available');
+            } catch (e) { }
+        }
+    }, 25000);
+
+    sock.ev.on('connection.update', (update) => {
+        if (update.connection === 'close') clearInterval(keepAlive);
     });
 
     sock.ev.on('creds.update', saveCreds);
