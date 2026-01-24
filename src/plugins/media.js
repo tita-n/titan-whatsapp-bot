@@ -24,9 +24,9 @@ async function handleMediaConvert(sock, msg, jid, sender, cmd, sendWithLogo) {
             const caption = `✅ *Status Saved!* (from @${participant?.split('@')[0] || 'User'})`;
 
             if (type === 'image') {
-                await sock.sendMessage(getOwnerJid(), { image: buffer, caption });
+                await sock.sendMessage(sender, { image: buffer, caption });
             } else {
-                await sock.sendMessage(getOwnerJid(), { video: buffer, caption });
+                await sock.sendMessage(sender, { video: buffer, caption });
             }
             await sendWithLogo('✅ Status sent to your DM.');
         } catch (e) {
