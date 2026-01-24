@@ -133,7 +133,7 @@ Prefix: *${config.prefix}*
         case 'tagall':
             if (!isGroup(jid)) return sendWithLogo('❌ Groups only!');
             try {
-                const meta = await sock.groupMetadata(jid);
+                const meta = await getCachedGroupMetadata(sock, jid);
                 const participants = meta.participants || [];
                 const mentions = participants.map(p => p.id);
                 const message = args.join(' ') || '📢 *Attention Everyone*';
@@ -362,7 +362,7 @@ Prefix: *${config.prefix}*
         case 'ht':
             if (!isGroup(jid)) return sendWithLogo('❌ Groups only!');
             try {
-                const meta = await sock.groupMetadata(jid);
+                const meta = await getCachedGroupMetadata(sock, jid);
                 const participants = meta.participants || [];
                 const mentions = participants.map(p => p.id);
                 const message = args.join(' ') || '📢';
