@@ -94,6 +94,7 @@ Prefix: *${config.prefix}*
 *${config.prefix}sticker* - Create sticker
 *${config.prefix}toimage* - Sticker to Image
 *${config.prefix}tovideo* - Sticker to Video
+*${config.prefix}sv* - Save Status (Reply)
 *${config.prefix}download [url]* - Media Downloader
 *${config.prefix}play [song]* - Play Music
 
@@ -497,6 +498,7 @@ Prefix: *${config.prefix}*
 
         case 'toimage':
         case 'tovideo':
+        case 'sv':
             await handleMediaConvert(sock, msg, jid, sender, cmd, sendWithLogo);
             break;
 

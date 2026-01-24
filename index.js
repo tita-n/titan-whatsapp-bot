@@ -94,11 +94,12 @@ async function startTitan() {
 
     // --- SELF PINGER (FOR RENDER 24/7) ---
     setInterval(async () => {
-        if (settings.appUrl) {
+        const pingerUrl = settings.appUrl || process.env.RENDER_EXTERNAL_URL;
+        if (pingerUrl) {
             try {
                 const axios = require('axios');
-                await axios.get(settings.appUrl).catch(() => null);
-                console.log('[TITAN] Self-ping successful.');
+                await axios.get(pingerUrl).catch(() => null);
+                console.log('[TITAN] Self-ping successful:', pingerUrl);
             } catch (e) { }
         }
     }, 5 * 60 * 1000); // 5 minutes

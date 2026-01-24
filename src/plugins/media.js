@@ -6,7 +6,35 @@ const { config } = require('../../utils');
 
 async function handleMediaConvert(sock, msg, jid, sender, cmd, sendWithLogo) {
     const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-    if (!quoted) return sendWithLogo('❌ Reply to a sticker to convert it!');
+    if (!quoted) return sendWithLogo('❌ Reply to a sticker/status to save it!');
+
+    // --- STATUS SAVER (.sv) ---
+    if (cmd === 'sv') {
+        const participant = msg.message?.extendedTextMessage?.contextInfo?.participant;
+        if (!participant || !participant.includes('status@broadcast')) {
+            // Check if it's just a regular media reply
+            const isMedia = quoted.imageMessage || quoted.videoMessage;
+            if (!isMedia) return sendWithLogo('❌ Please reply to a Status or Media message.');
+        }
+
+        try {
+            await sock.sendMessage(jid, { text: '⏬ *Downloading status...*' });
+            const buffer = await downloadMediaMessage({ message: quoted }, 'buffer', {});
+            const type = quoted.imageMessage ? 'image' : 'video';
+            const caption = `✅ *Status Saved!* (from @${participant?.split('@')[0] || 'User'})`;
+
+            if (type === 'image') {
+                await sock.sendMessage(getOwnerJid(), { image: buffer, caption });
+            } else {
+                await sock.sendMessage(getOwnerJid(), { video: buffer, caption });
+            }
+            await sendWithLogo('✅ Status sent to your DM.');
+        } catch (e) {
+            console.error('[TITAN SV] Error:', e);
+            await sendWithLogo('❌ Failed to save status.');
+        }
+        return;
+    }
 
     const isSticker = quoted.stickerMessage;
     if (!isSticker) return sendWithLogo('❌ That is not a sticker.');
