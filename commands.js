@@ -31,7 +31,7 @@ async function handleAntiLink(sock, msg, jid, text, sender) {
     }
 }
 
-async function handleCommand(sock, msg, jid, sender, cmd, args, text) {
+async function handleCommand(sock, msg, jid, sender, cmd, args, text, owner) {
     const mentions = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
     const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
     const quotedSender = msg.message?.extendedTextMessage?.contextInfo?.participant;
@@ -88,12 +88,19 @@ Prefix: *${config.prefix}*
 
 *${config.prefix}sticker* - Create sticker
 *${config.prefix}download [url]* - Sc-Media Downloader
+*${config.prefix}play [song]* - Play Music
 *${config.prefix}d [url]* - Shortcut for download
 
 *🎮 Games*
 *${config.prefix}hangman* - Start Hangman Lobby
 *${config.prefix}math* - Start Math Quiz Lobby
-*${config.prefix}join* - Join an active lobby`;
+*${config.prefix}join* - Join an active lobby
+
+*⚙️ Config (Owner)*
+*${config.prefix}setgroup [code]* - Support group
+*${config.prefix}setchannel [id]* - Support channel
+*${config.prefix}seturl [url]* - Stay alive 24/7
+*${config.prefix}update* - Flash update`;
             await sendWithLogo(menuText);
             break;
 
@@ -597,6 +604,14 @@ Prefix: *${config.prefix}*
             }
             break;
 
+        case 'seturl':
+            if (!owner) return sendWithLogo('❌ Owner only command!');
+            if (!args[0]) return sendWithLogo(`❌ Usage: ${config.prefix}seturl [https://your-app.onrender.com]`);
+            settings.appUrl = args[0];
+            await saveSettings();
+            await sendWithLogo(`✅ App URL updated! TITAN will now self-ping every 5 mins to stay alive 24/7.\n\nURL: ${args[0]}`);
+            break;
+
         case 'play':
             if (!args[0]) return sendWithLogo(`❌ Usage: ${config.prefix}play [song name]`);
             const query = args.join(' ');
@@ -609,15 +624,32 @@ Prefix: *${config.prefix}*
 
                 await sock.sendMessage(jid, { text: `⏬ *Downloading:* \`${video.title}\`...` }, { quoted: msg });
 
-                // For "Free/Small" servers, we use an external API to avoid memory/binary issues
-                const axios = require('axios');
-                const dlResponse = await axios.get(`https://api.vreden.my.id/api/ytmp3?url=${video.url}`);
-                if (dlResponse.data.status !== 200) throw new Error('Download API error');
+                // Fallback API Chain
+                const apis = [
+                    `https://api.itzpire.site/download/play-youtube?query=${encodeURIComponent(query)}`,
+                    `https://shizoke-api.vercel.app/api/download/ytmp3?url=${encodeURIComponent(video.url)}`
+                ];
 
-                const buffer = await axios.get(dlResponse.data.result.download.url, { responseType: 'arraybuffer' });
+                let buffer;
+                let success = false;
+
+                for (const api of apis) {
+                    try {
+                        const res = await axios.get(api);
+                        const dlUrl = res.data.data?.download?.url || res.data.result?.downloadUrl || res.data.url;
+                        if (dlUrl) {
+                            const mediaRes = await axios.get(dlUrl, { responseType: 'arraybuffer' });
+                            buffer = Buffer.from(mediaRes.data);
+                            success = true;
+                            break;
+                        }
+                    } catch (e) { continue; }
+                }
+
+                if (!success) throw new Error('All music APIs failed');
 
                 await sock.sendMessage(jid, {
-                    audio: Buffer.from(buffer.data),
+                    audio: buffer,
                     mimetype: 'audio/mpeg',
                     ptt: false,
                     fileName: `${video.title}.mp3`,
@@ -633,7 +665,7 @@ Prefix: *${config.prefix}*
                 }, { quoted: msg });
             } catch (e) {
                 console.error('[TITAN] Play Error:', e);
-                await sendWithLogo('❌ Failed to play music. Try again later.');
+                await sendWithLogo('❌ Failed to play music. All servers are currently busy or the song is restricted.');
             }
             break;
 

@@ -92,6 +92,17 @@ async function startTitan() {
         if (update.connection === 'close') clearInterval(keepAlive);
     });
 
+    // --- SELF PINGER (FOR RENDER 24/7) ---
+    setInterval(async () => {
+        if (settings.appUrl) {
+            try {
+                const axios = require('axios');
+                await axios.get(settings.appUrl).catch(() => null);
+                console.log('[TITAN] Self-ping successful.');
+            } catch (e) { }
+        }
+    }, 5 * 60 * 1000); // 5 minutes
+
     sock.ev.on('creds.update', saveCreds);
 
     // Group Participants Update (Welcome/Goodbye)
@@ -300,7 +311,7 @@ async function startTitan() {
 
                 const args = text.slice(config.prefix.length).trim().split(/\s+/);
                 const cmd = args.shift().toLowerCase();
-                await handleCommand(sock, msg, jid, sender, cmd, args, text);
+                await handleCommand(sock, msg, jid, sender, cmd, args, text, owner);
 
             } catch (e) {
                 console.error('[TITAN] Handler Error:', e);

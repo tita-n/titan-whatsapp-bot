@@ -26,7 +26,8 @@ let settings = {
     antidelete: {},    // jid: true/false
     antispam: {},       // jid: true/false
     supportGroup: '',   // Dynamic Group Code
-    supportChannel: ''  // Dynamic Channel ID
+    supportChannel: '', // Dynamic Channel ID
+    appUrl: ''          // Bot's own URL (For self-ping)
 };
 
 // Application Stores
