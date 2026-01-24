@@ -18,15 +18,20 @@ async function handleMediaConvert(sock, msg, jid, sender, cmd, sendWithLogo) {
         }
 
         try {
-            await sock.sendMessage(jid, { text: '⏬ *Downloading status...*' });
-            const buffer = await downloadMediaMessage({ message: quoted }, 'buffer', {});
-            const type = quoted.imageMessage ? 'image' : 'video';
-            const caption = `✅ *Status Saved!* (from @${participant?.split('@')[0] || 'User'})`;
-
-            if (type === 'image') {
-                await sock.sendMessage(sender, { image: buffer, caption });
+            const isMedia = quoted.imageMessage || quoted.videoMessage;
+            if (isMedia) {
+                await sock.sendMessage(jid, { text: '⏬ *Downloading status media...*' });
+                const buffer = await downloadMediaMessage({ message: quoted }, 'buffer', {});
+                const type = quoted.imageMessage ? 'image' : 'video';
+                const caption = `✅ *Status Saved!* (from @${participant?.split('@')[0] || 'User'})`;
+                if (type === 'image') {
+                    await sock.sendMessage(sender, { image: buffer, caption });
+                } else {
+                    await sock.sendMessage(sender, { video: buffer, caption });
+                }
             } else {
-                await sock.sendMessage(sender, { video: buffer, caption });
+                const textStatus = quoted.conversation || quoted.extendedTextMessage?.text || '(empty)';
+                await sock.sendMessage(sender, { text: `📝 *Saved Text Status*\n\nFrom: @${participant?.split('@')[0]}\n\n${textStatus}` });
             }
             await sendWithLogo('✅ Status sent to your DM.');
         } catch (e) {
