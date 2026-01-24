@@ -566,6 +566,77 @@ Prefix: *${config.prefix}*
             if (args[0]) await sendWithLogo(`❌ Prefix change requires DB. Using default: ${config.prefix}`);
             break;
 
+        case 'setgroup':
+            if (!owner) return sendWithLogo('❌ Owner only command!');
+            if (!args[0]) return sendWithLogo(`❌ Usage: ${config.prefix}setgroup [code]\nExample: ${config.prefix}setgroup Fes6TfTWL7vGxb92wbO2oj`);
+            settings.supportGroup = args[0];
+            await sendWithLogo(`✅ Support Group updated to: ${args[0]}`);
+            break;
+
+        case 'setchannel':
+            if (!owner) return sendWithLogo('❌ Owner only command!');
+            if (!args[0]) return sendWithLogo(`❌ Usage: ${config.prefix}setchannel [id]\nExample: ${config.prefix}setchannel 0029VbAfo9dJ3jv3zgM3KQ3E`);
+            settings.supportChannel = args[0];
+            await sendWithLogo(`✅ Support Channel updated to: ${args[0]}`);
+            break;
+
+        case 'update':
+            if (!owner) return sendWithLogo('❌ Owner only command!');
+            await sendWithLogo('⏳ *Checking for updates...*');
+            try {
+                const { execSync } = require('child_process');
+                const stdout = execSync('git pull origin main').toString();
+                if (stdout.includes('Already up to date')) {
+                    await sendWithLogo('✅ TITAN is already running the latest version.');
+                } else {
+                    await sendWithLogo('🚀 *Update Pulled!* Restarting... (Session is safe in Env)');
+                    process.exit(0); // Render will auto-restart
+                }
+            } catch (e) {
+                await sendWithLogo(`❌ Update Failed: ${e.message}`);
+            }
+            break;
+
+        case 'play':
+            if (!args[0]) return sendWithLogo(`❌ Usage: ${config.prefix}play [song name]`);
+            const query = args.join(' ');
+            try {
+                await sock.sendMessage(jid, { text: `🎵 *Searching:* \`${query}\`...` }, { quoted: msg });
+                const yts = require('yt-search');
+                const search = await yts(query);
+                const video = search.videos[0];
+                if (!video) return sendWithLogo('❌ No results found.');
+
+                await sock.sendMessage(jid, { text: `⏬ *Downloading:* \`${video.title}\`...` }, { quoted: msg });
+
+                // For "Free/Small" servers, we use an external API to avoid memory/binary issues
+                const axios = require('axios');
+                const dlResponse = await axios.get(`https://api.vreden.my.id/api/ytmp3?url=${video.url}`);
+                if (dlResponse.data.status !== 200) throw new Error('Download API error');
+
+                const buffer = await axios.get(dlResponse.data.result.download.url, { responseType: 'arraybuffer' });
+
+                await sock.sendMessage(jid, {
+                    audio: Buffer.from(buffer.data),
+                    mimetype: 'audio/mpeg',
+                    ptt: false,
+                    fileName: `${video.title}.mp3`,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: video.title,
+                            body: video.author.name,
+                            mediaType: 2,
+                            thumbnailUrl: video.thumbnail,
+                            sourceUrl: video.url
+                        }
+                    }
+                }, { quoted: msg });
+            } catch (e) {
+                console.error('[TITAN] Play Error:', e);
+                await sendWithLogo('❌ Failed to play music. Try again later.');
+            }
+            break;
+
         default:
             break;
     }

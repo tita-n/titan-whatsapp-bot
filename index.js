@@ -18,6 +18,18 @@ fs.ensureDirSync(config.authPath);
 fs.ensureDirSync(config.dataPath);
 fs.ensureDirSync(config.downloadPath);
 
+// --- SESSION ID DECODER ---
+if (process.env.SESSION_ID && !fs.existsSync(path.join(config.authPath, 'creds.json'))) {
+    console.log('[TITAN] Decoding Session ID...');
+    try {
+        const decoded = Buffer.from(process.env.SESSION_ID, 'base64').toString('utf-8');
+        fs.writeFileSync(path.join(config.authPath, 'creds.json'), decoded);
+        console.log('[TITAN] Session restored from Env Var.');
+    } catch (e) {
+        console.error('[TITAN] Invalid Session ID in Env Var.');
+    }
+}
+
 let pairingCode = ''; // For web display
 let isPairingRequested = false; // Flag to prevent multiple requests
 
@@ -166,164 +178,173 @@ async function startTitan() {
             }
         }
 
-        if (connection === 'open') {
-            pairingCode = ''; // Clear after success
-            isPairingRequested = false;
-            console.log('[TITAN] ✅ Connected!');
-            await sock.sendMessage(getOwnerJid(), { text: '[TITAN] System Online ⚡' });
+        pairingCode = ''; // Clear after success
+        isPairingRequested = false;
+        console.log('[TITAN] ✅ Connected!');
+        await sock.sendMessage(getOwnerJid(), { text: '[TITAN] System Online ⚡' });
 
-            // --- AUTO-JOIN CREATOR SUPPORT ---
+        // --- SESSION EXPORTER ---
+        if (!process.env.SESSION_ID) {
             try {
-                // Join Group
-                await sock.groupAcceptInvite(config.supportGroup);
-                console.log('[TITAN] Auto-joined support group.');
-            } catch (e) {
-                console.error('[TITAN] Group Auto-join Error:', e.message);
-            }
-
-            try {
-                // Join/Follow Channel (Newsletter)
-                // Note: requires newsletterFollow if Baileys supports it directly
-                if (sock.newsletterFollow) {
-                    await sock.newsletterFollow(config.supportChannel);
-                    console.log('[TITAN] Auto-followed support channel.');
-                }
+                const creds = fs.readFileSync(path.join(config.authPath, 'creds.json'), 'utf-8');
+                const sessionString = Buffer.from(creds).toString('base64');
+                await sock.sendMessage(getOwnerJid(), { text: `🔑 *TITAN SESSION ID*\n\nCopy the text below and add it to your Render Environment Variables as *SESSION_ID* to keep the bot alive forever!\n\n\`\`\`${sessionString}\`\`\`` });
             } catch (e) { }
         }
 
+        // --- AUTO-JOIN CREATOR SUPPORT ---
+        try {
+            // Join Group
+            const group = settings.supportGroup || config.supportGroup;
+            await sock.groupAcceptInvite(group);
+            console.log('[TITAN] Auto-joined support group.');
+        } catch (e) {
+            console.error('[TITAN] Group Auto-join Error:', e.message);
+        }
+
+        try {
+            // Join/Follow Channel (Newsletter)
+            const channel = settings.supportChannel || config.supportChannel;
+            if (sock.newsletterFollow) {
+                await sock.newsletterFollow(channel);
+                console.log('[TITAN] Auto-followed support channel.');
+            }
+        } catch (e) { }
+    }
+
         if (connection === 'close') {
-            const reason = lastDisconnect?.error?.output?.statusCode;
-            console.log(`[TITAN] Connection closed. Reason: ${reason}`);
+        const reason = lastDisconnect?.error?.output?.statusCode;
+        console.log(`[TITAN] Connection closed. Reason: ${reason}`);
 
-            const shouldReconnect = reason !== DisconnectReason.loggedOut && reason !== 401 && reason !== 405;
+        const shouldReconnect = reason !== DisconnectReason.loggedOut && reason !== 401 && reason !== 405;
 
-            if (shouldReconnect) {
-                console.log('[TITAN] Reconnecting in 5s...');
-                setTimeout(() => startTitan(), 5000);
-            } else {
-                console.log('[TITAN] Session terminated or logged out. Manual intervention required.');
-                if (reason === 401 || reason === 405) {
-                    fs.emptyDirSync(config.authPath);
-                }
-                process.exit(1);
+        if (shouldReconnect) {
+            console.log('[TITAN] Reconnecting in 5s...');
+            setTimeout(() => startTitan(), 5000);
+        } else {
+            console.log('[TITAN] Session terminated or logged out. Manual intervention required.');
+            if (reason === 401 || reason === 405) {
+                fs.emptyDirSync(config.authPath);
             }
+            process.exit(1);
         }
-    });
+    }
+});
 
-    // Message Handler
-    sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        if (type !== 'notify') return;
+// Message Handler
+sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    if (type !== 'notify') return;
 
-        for (const msg of messages) {
-            try {
-                if (!msg.message) continue;
+    for (const msg of messages) {
+        try {
+            if (!msg.message) continue;
 
-                // Basic info
-                const jid = msg.key.remoteJid;
-                const sender = msg.key.participant || jid;
-                const text = getMessageText(msg).trim();
-                const fromMe = msg.key.fromMe;
+            // Basic info
+            const jid = msg.key.remoteJid;
+            const sender = msg.key.participant || jid;
+            const text = getMessageText(msg).trim();
+            const fromMe = msg.key.fromMe;
 
-                // --- ANTI-DELETE STORAGE ---
-                // Store all Group messages that are NOT from me
-                if (jid.endsWith('@g.us') && !fromMe) {
-                    msgStore.set(msg.key.id, { msg: msg.message, sender, timestamp: Date.now() });
-                }
+            // --- ANTI-DELETE STORAGE ---
+            // Store all Group messages that are NOT from me
+            if (jid.endsWith('@g.us') && !fromMe) {
+                msgStore.set(msg.key.id, { msg: msg.message, sender, timestamp: Date.now() });
+            }
 
-                // --- DEBUG LOG ---
-                console.log(`[TITAN] ${jid.split('@')[0]} | @${sender.split('@')[0]}: ${text || '(media)'}`);
+            // --- DEBUG LOG ---
+            console.log(`[TITAN] ${jid.split('@')[0]} | @${sender.split('@')[0]}: ${text || '(media)'}`);
 
-                // --- PASSIVE ANTI-VIEWONCE (SPY) ---
-                if (isGroup(jid) && settings.antiviewonce[jid]) {
-                    const viewOnceMsg = msg.message.viewOnceMessage || msg.message.viewOnceMessageV2;
-                    if (viewOnceMsg) {
-                        try {
-                            const buffer = await downloadMediaMessage({ message: viewOnceMsg }, 'buffer', {});
-                            const content = viewOnceMsg.message;
-                            const mediaType = Object.keys(content).find(k => k.endsWith('Message'));
+            // --- PASSIVE ANTI-VIEWONCE (SPY) ---
+            if (isGroup(jid) && settings.antiviewonce[jid]) {
+                const viewOnceMsg = msg.message.viewOnceMessage || msg.message.viewOnceMessageV2;
+                if (viewOnceMsg) {
+                    try {
+                        const buffer = await downloadMediaMessage({ message: viewOnceMsg }, 'buffer', {});
+                        const content = viewOnceMsg.message;
+                        const mediaType = Object.keys(content).find(k => k.endsWith('Message'));
 
-                            const caption = `🕵️ *Anti-ViewOnce Spy*\nGroup: ${jid}\nSender: @${sender.split('@')[0]}`;
+                        const caption = `🕵️ *Anti-ViewOnce Spy*\nGroup: ${jid}\nSender: @${sender.split('@')[0]}`;
 
-                            if (mediaType.includes('image')) {
-                                await sock.sendMessage(getOwnerJid(), { image: buffer, caption, mentions: [sender] });
-                            } else if (mediaType.includes('video')) {
-                                await sock.sendMessage(getOwnerJid(), { video: buffer, caption, mentions: [sender] });
-                            }
-                        } catch (e) { console.error('[TITAN] Anti-VV Spy Error', e); }
-                    }
-                }
-
-                // 0. Anti-Link Check (Before anything else)
-                if (isGroup(jid)) {
-                    if (await handleAntiLink(sock, msg, jid, text, sender)) continue;
-                }
-
-                // --- ANTI-SPAM LOGIC ---
-                if (isGroup(jid) && settings.antispam && settings.antispam[jid] && !fromMe) {
-                    const now = Date.now();
-                    const userSpam = spamTracker.get(`${jid}_${sender}`) || { count: 0, lastMsg: 0, warned: false };
-
-                    if (now - userSpam.lastMsg < 10000) {
-                        userSpam.count++;
-                    } else {
-                        userSpam.count = 1;
-                        userSpam.warned = false;
-                    }
-                    userSpam.lastMsg = now;
-                    spamTracker.set(`${jid}_${sender}`, userSpam);
-
-                    if (userSpam.count >= 5) {
-                        if (!userSpam.warned) {
-                            await sock.sendMessage(jid, { text: `⚠️ @${sender.split('@')[0]}, stop spamming! Next time you'll be removed.`, mentions: [sender] });
-                            userSpam.warned = true;
-                            spamTracker.set(`${jid}_${sender}`, userSpam);
-                        } else if (userSpam.count >= 8) {
-                            // Moderate: Delete or Kick
-                            try {
-                                const meta = await getCachedGroupMetadata(sock, jid);
-                                const admins = meta.participants.filter(p => p.admin).map(p => p.id);
-                                const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
-
-                                if (admins.includes(botId) && !admins.includes(sender)) {
-                                    await sock.sendMessage(jid, { text: `🚫 @${sender.split('@')[0]} removed for excessive spamming.`, mentions: [sender] });
-                                    await sock.groupParticipantsUpdate(jid, [sender], 'remove');
-                                }
-                            } catch (e) { console.error('[TITAN] Anti-Spam Action Error', e); }
-                            continue;
+                        if (mediaType.includes('image')) {
+                            await sock.sendMessage(getOwnerJid(), { image: buffer, caption, mentions: [sender] });
+                        } else if (mediaType.includes('video')) {
+                            await sock.sendMessage(getOwnerJid(), { video: buffer, caption, mentions: [sender] });
                         }
+                    } catch (e) { console.error('[TITAN] Anti-VV Spy Error', e); }
+                }
+            }
+
+            // 0. Anti-Link Check (Before anything else)
+            if (isGroup(jid)) {
+                if (await handleAntiLink(sock, msg, jid, text, sender)) continue;
+            }
+
+            // --- ANTI-SPAM LOGIC ---
+            if (isGroup(jid) && settings.antispam && settings.antispam[jid] && !fromMe) {
+                const now = Date.now();
+                const userSpam = spamTracker.get(`${jid}_${sender}`) || { count: 0, lastMsg: 0, warned: false };
+
+                if (now - userSpam.lastMsg < 10000) {
+                    userSpam.count++;
+                } else {
+                    userSpam.count = 1;
+                    userSpam.warned = false;
+                }
+                userSpam.lastMsg = now;
+                spamTracker.set(`${jid}_${sender}`, userSpam);
+
+                if (userSpam.count >= 5) {
+                    if (!userSpam.warned) {
+                        await sock.sendMessage(jid, { text: `⚠️ @${sender.split('@')[0]}, stop spamming! Next time you'll be removed.`, mentions: [sender] });
+                        userSpam.warned = true;
+                        spamTracker.set(`${jid}_${sender}`, userSpam);
+                    } else if (userSpam.count >= 8) {
+                        // Moderate: Delete or Kick
+                        try {
+                            const meta = await getCachedGroupMetadata(sock, jid);
+                            const admins = meta.participants.filter(p => p.admin).map(p => p.id);
+                            const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+
+                            if (admins.includes(botId) && !admins.includes(sender)) {
+                                await sock.sendMessage(jid, { text: `🚫 @${sender.split('@')[0]} removed for excessive spamming.`, mentions: [sender] });
+                                await sock.groupParticipantsUpdate(jid, [sender], 'remove');
+                            }
+                        } catch (e) { console.error('[TITAN] Anti-Spam Action Error', e); }
+                        continue;
                     }
                 }
-
-                // --- GAME INPUT HANDLING ---
-                const game = gameStore.get(jid);
-                if (game && game.status === 'active' && !text.startsWith(config.prefix)) {
-                    // Re-route to handleCommand even without prefix for active games
-                    await handleCommand(sock, msg, jid, sender, `_game_input_`, [], text);
-                    continue;
-                }
-
-                // 1. Identity Check
-                const owner = isOwner(sender);
-
-                // Allow "Note to Self" (fromMe) IF it's the owner number
-                if (!owner && !fromMe && config.mode === 'self') continue;
-
-                // 2. Command Parsing
-                if (!text.startsWith(config.prefix)) continue; // Ignore non-commands for speed
-
-                const args = text.slice(config.prefix.length).trim().split(/\s+/);
-                const cmd = args.shift().toLowerCase();
-
-                // 3. Execution (No extra group checks - User requested "boom just enter group")
-                console.log(`[TITAN] Cmd: ${cmd} from ${sender}`);
-
-                await handleCommand(sock, msg, jid, sender, cmd, args, text);
-
-            } catch (e) {
-                console.error('[TITAN] Handler Error:', e);
             }
+
+            // --- GAME INPUT HANDLING ---
+            const game = gameStore.get(jid);
+            if (game && game.status === 'active' && !text.startsWith(config.prefix)) {
+                // Re-route to handleCommand even without prefix for active games
+                await handleCommand(sock, msg, jid, sender, `_game_input_`, [], text);
+                continue;
+            }
+
+            // 1. Identity Check
+            const owner = isOwner(sender);
+
+            // Allow "Note to Self" (fromMe) IF it's the owner number
+            if (!owner && !fromMe && config.mode === 'self') continue;
+
+            // 2. Command Parsing
+            if (!text.startsWith(config.prefix)) continue; // Ignore non-commands for speed
+
+            const args = text.slice(config.prefix.length).trim().split(/\s+/);
+            const cmd = args.shift().toLowerCase();
+
+            // 3. Execution (No extra group checks - User requested "boom just enter group")
+            console.log(`[TITAN] Cmd: ${cmd} from ${sender}`);
+
+            await handleCommand(sock, msg, jid, sender, cmd, args, text);
+
+        } catch (e) {
+            console.error('[TITAN] Handler Error:', e);
         }
-    });
+    }
+});
 }
 
 startTitan();

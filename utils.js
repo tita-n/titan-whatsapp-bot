@@ -24,7 +24,9 @@ let settings = {
     goodbye: {},   // jid: true/false
     antiviewonce: {}, // jid: true/false (Passive Spy)
     antidelete: {},    // jid: true/false
-    antispam: {}       // jid: true/false
+    antispam: {},       // jid: true/false
+    supportGroup: '',   // Dynamic Group Code
+    supportChannel: ''  // Dynamic Channel ID
 };
 
 // Application Stores
