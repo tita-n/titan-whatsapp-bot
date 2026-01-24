@@ -26,7 +26,7 @@ async function handleAI(sock, jid, sender, text, sendWithLogo) {
         await sock.sendMessage(jid, { text: '⚖️ *TITAN is judging your thoughts...*' });
 
         const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
-            model: 'google/gemini-2.0-flash-exp:free',
+            model: 'z-ai/glm-4.5-air:free',
             messages: [
                 { role: 'system', content: SYSTEM_PROMPT },
                 { role: 'user', content: text }

@@ -1,3 +1,4 @@
+const { downloadContentFromMessage, downloadMediaMessage } = require('@whiskeysockets/baileys');
 const axios = require('axios');
 const fs = require('fs-extra');
 const moment = require('moment');
@@ -608,16 +609,13 @@ Prefix: *${config.prefix}*
 
         case 'update':
             if (!owner) return sendWithLogo('❌ Owner only command!');
-            await sendWithLogo('⏳ *Checking for updates...*');
+            await sendWithLogo('🚀 *Syncing with TITAN Core...*');
             try {
                 const { execSync } = require('child_process');
-                const stdout = execSync('git pull origin main').toString();
-                if (stdout.includes('Already up to date')) {
-                    await sendWithLogo('✅ TITAN is already running the latest version.');
-                } else {
-                    await sendWithLogo('🚀 *Update Pulled!* Restarting... (Session is safe in Env)');
-                    process.exit(0); // Render will auto-restart
-                }
+                // Force sync with main branch (cleans local changes)
+                execSync('git fetch origin && git reset --hard origin/main');
+                await sendWithLogo('✅ *System Overhauled!* Rebooting for final changes...');
+                process.exit(0);
             } catch (e) {
                 await sendWithLogo(`❌ Update Failed: ${e.message}`);
             }
