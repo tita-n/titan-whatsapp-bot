@@ -1,8 +1,11 @@
-const { downloadMediaMessage, downloadContentFromMessage } = require('@whiskeysockets/baileys');
-const moment = require('moment');
-const fs = require('fs-extra');
 const axios = require('axios');
 const { config, settings, saveSettings, getOwnerJid, isGroup, getGroupAdmins, spamTracker, gameStore, getCachedGroupMetadata } = require('./utils');
+
+// Plugins
+const { handleEconomy } = require('./src/plugins/economy');
+const { handleAI } = require('./src/plugins/ai');
+const { handleMediaConvert } = require('./src/plugins/media');
+const { handleAdmin } = require('./src/plugins/admin');
 
 async function handleAntiLink(sock, msg, jid, text, sender) {
     if (!settings.antilink[jid]) return false; // Use Shared Settings
@@ -87,18 +90,29 @@ Prefix: *${config.prefix}*
 *${config.prefix}antilink [on/off]* - Auto-kick links
 
 *${config.prefix}sticker* - Create sticker
-*${config.prefix}download [url]* - Sc-Media Downloader
+*${config.prefix}toimage* - Sticker to Image
+*${config.prefix}tovideo* - Sticker to Video
+*${config.prefix}download [url]* - Media Downloader
 *${config.prefix}play [song]* - Play Music
-*${config.prefix}d [url]* - Shortcut for download
+
+*💰 Economy*
+*${config.prefix}daily* - Claim points
+*${config.prefix}balance* - Check wallet
+*${config.prefix}gamble [amt]* - Double points
+*${config.prefix}top* - Leaderboard
+
+*🤖 Intelligence*
+*${config.prefix}ai [query]* - Chat with TITAN
 
 *🎮 Games*
-*${config.prefix}hangman* - Start Hangman Lobby
-*${config.prefix}math* - Start Math Quiz Lobby
+*${config.prefix}hangman* - Start Hangman
+*${config.prefix}math* - Start Math Quiz
 *${config.prefix}join* - Join an active lobby
 
 *⚙️ Config (Owner)*
-*${config.prefix}setgroup [code]* - Support group
-*${config.prefix}setchannel [id]* - Support channel
+*${config.prefix}broadcast [msg]* - Group BC
+*${config.prefix}setgroup [code]* - Edit support
+*${config.prefix}setchannel [id]* - Edit channel
 *${config.prefix}seturl [url]* - Stay alive 24/7
 *${config.prefix}update* - Flash update`;
             await sendWithLogo(menuText);
@@ -376,22 +390,7 @@ Prefix: *${config.prefix}*
 
         case 'broadcast':
         case 'bc':
-            if (!sender.includes(config.ownerNumber)) return;
-            const bcMsg = args.join(' ');
-            if (!bcMsg) return sendWithLogo('❌ Enter message.');
-
-            const groups = await sock.groupFetchAllParticipating();
-            const groupIds = Object.keys(groups);
-
-            await sendWithLogo(`📢 Broadcasting to ${groupIds.length} groups...`);
-
-            for (const gJid of groupIds) {
-                try {
-                    await sock.sendMessage(gJid, { text: `*📢 [TITAN BROADCAST]*\n\n${bcMsg}` });
-                    await new Promise(r => setTimeout(r, 1000));
-                } catch (e) { }
-            }
-            await sendWithLogo('✅ Broadcast complete.');
+            await handleAdmin(sock, msg, jid, sender, cmd, args, text, owner, sendWithLogo);
             break;
 
         case 'antispam':
@@ -494,23 +493,39 @@ Prefix: *${config.prefix}*
             await handleGameInput(sock, jid, sender, text, msg);
             break;
 
+        case 'toimage':
+        case 'tovideo':
+            await handleMediaConvert(sock, msg, jid, sender, cmd, sendWithLogo);
+            break;
+
         case 'sticker':
         case 's':
             try {
+                const { downloadMediaMessage } = require('@whiskeysockets/baileys');
                 const targetMsg = quoted || msg.message;
                 const mime = targetMsg.imageMessage?.mimetype || targetMsg.videoMessage?.mimetype;
-
                 if (mime) {
                     const buffer = await downloadMediaMessage({ message: targetMsg }, 'buffer', {});
                     await sock.sendMessage(jid, { sticker: buffer });
                 } else {
-                    await sendWithLogo('❌ Reply to an image/video with .sticker');
+                    await sendWithLogo('❌ Reply to an image/video');
                 }
-            } catch (e) {
-                await sendWithLogo('❌ conversion failed.');
-            }
+            } catch (e) { }
             break;
 
+        case 'daily':
+        case 'balance':
+        case 'wallet':
+        case 'gamble':
+        case 'top':
+        case 'leaderboard':
+            await handleEconomy(sock, jid, sender, cmd, args, sendWithLogo);
+            break;
+
+        case 'ai':
+        case 'titan':
+            await handleAI(sock, jid, sender, args.join(' '), sendWithLogo);
+            break;
 
         case 'download':
         case 'd':

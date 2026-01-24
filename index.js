@@ -103,6 +103,16 @@ async function startTitan() {
         }
     }, 5 * 60 * 1000); // 5 minutes
 
+    // --- MEMORY CLEANUP (AUTO-WIPE DOWNLOADS) ---
+    setInterval(() => {
+        const fs = require('fs-extra');
+        try {
+            fs.emptyDirSync(config.downloadPath);
+            console.log('[TITAN] Download cache cleared.');
+        } catch (e) { }
+    }, 60 * 60 * 1000); // Hourly
+
+
     sock.ev.on('creds.update', saveCreds);
 
     // Group Participants Update (Welcome/Goodbye)
