@@ -585,60 +585,15 @@ Prefix: *${config.prefix}*
             break;
 
         case 'play':
-            if (!args[0]) return sendWithLogo(`❌ Usage: ${config.prefix}play [song name]`);
-            const query = args.join(' ');
-            try {
-                await sock.sendMessage(jid, { text: `🎵 *Searching:* \`${query}\`...` }, { quoted: msg });
-                const yts = require('yt-search');
-                const search = await yts(query);
-                const video = search.videos[0];
-                if (!video) return sendWithLogo('❌ No results found.');
+            await handleMusic(sock, msg, jid, sender, args.join(' '), sendWithLogo);
+            break;
 
-                await sock.sendMessage(jid, { text: `⏬ *Downloading:* \`${video.title}\`...` }, { quoted: msg });
-
-                const apis = [
-                    `https://api.vreden.my.id/api/ytmp3?url=${encodeURIComponent(video.url)}`,
-                    `https://api.giftedtech.my.id/api/download/ytmp3?apikey=gifted&url=${encodeURIComponent(video.url)}`,
-                    `https://shizoke-api.vercel.app/api/download/ytmp3?url=${encodeURIComponent(video.url)}`,
-                    `https://api.itzpire.site/download/play-youtube?query=${encodeURIComponent(query)}`
-                ];
-
-                let buffer;
-                let success = false;
-                for (const api of apis) {
-                    try {
-                        const res = await axios.get(api, { timeout: 15000 });
-                        const dlUrl = res.data.result?.download_url || res.data.result?.url || res.data.data?.download?.url || res.data.url;
-                        if (dlUrl) {
-                            const mediaRes = await axios.get(dlUrl, { responseType: 'arraybuffer' });
-                            buffer = Buffer.from(mediaRes.data);
-                            success = true;
-                            break;
-                        }
-                    } catch (e) { continue; }
-                }
-
-                if (!success) throw new Error('All music APIs offline');
-
-                await sock.sendMessage(jid, {
-                    audio: buffer,
-                    mimetype: 'audio/mpeg',
-                    ptt: false,
-                    fileName: `${video.title}.mp3`,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: video.title,
-                            body: `TITAN Music Player⚡`,
-                            mediaType: 2,
-                            thumbnailUrl: video.thumbnail,
-                            sourceUrl: video.url
-                        }
-                    }
-                }, { quoted: msg });
-            } catch (e) {
-                console.error('[TITAN] Play Error:', e);
-                await sendWithLogo('❌ Music servers busy. Try again later.');
-            }
+        case 'seturl':
+            if (!owner) return sendWithLogo('❌ Owner only command!');
+            if (!args[0]) return sendWithLogo(`❌ Usage: ${config.prefix}seturl [https://your-app.onrender.com]`);
+            settings.appUrl = args[0];
+            await saveSettings();
+            await sendWithLogo(`✅ App URL updated! TITAN will now self-ping every 5 mins to stay alive 24/7.\n\nURL: ${args[0]}`);
             break;
 
         default:
