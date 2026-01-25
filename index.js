@@ -275,9 +275,9 @@ async function startTitan() {
                 if (!msg.message) continue;
 
                 const jid = msg.key.remoteJid;
-                const sender = msg.key.participant || jid;
-                const text = getMessageText(msg).trim();
                 const fromMe = msg.key.fromMe;
+                const sender = fromMe ? (sock.user.id.split(':')[0] + '@s.whatsapp.net') : (msg.key.participant || jid);
+                const text = getMessageText(msg).trim();
 
                 if (jid.endsWith('@g.us') && !fromMe) {
                     msgStore.set(msg.key.id, { msg: msg.message, sender, timestamp: Date.now() });

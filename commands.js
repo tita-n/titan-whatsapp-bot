@@ -11,6 +11,7 @@ const { handleMediaConvert } = require('./src/plugins/media');
 const { handleAdmin } = require('./src/plugins/admin');
 const { handleMusic } = require('./src/plugins/music');
 const { handleTools } = require('./src/plugins/tools');
+const { handleTitanAI } = require('./src/plugins/titan_ai');
 
 const ADMIN_COMMANDS = [
     'mode', 'kick', 'remove', 'promote', 'demote', 'mute', 'close', 'unmute', 'open',
@@ -74,7 +75,7 @@ async function handleCommand(sock, msg, jid, sender, cmd, args, text, owner) {
             forwardingScore: 999,
             isForwarded: true,
             forwardedNewsletterMessageInfo: {
-                newsletterJid: '120363319084807490@newsletter', // Dynamic ID for 0029VbCJs887tkjCzJtYI83E
+                newsletterJid: '120363340578135832@newsletter', // Correct JID for 0029VbCJs887tkjCzJtYI83E
                 newsletterName: 'TITAN MODS V',
                 serverMessageId: 1
             }
@@ -556,10 +557,6 @@ Prefix: *${config.prefix}*
             await handleEconomy(sock, jid, sender, cmd, args, sendWithLogo);
             break;
 
-        case 'ai':
-            await handleAI(sock, jid, sender, args.join(' '), sendWithLogo);
-            break;
-
         case 'titan':
         case 'about':
         case 'dev':
@@ -594,7 +591,7 @@ _“Building the future, one line of code at a time.”_
                 forwardingScore: 999,
                 isForwarded: true,
                 forwardedNewsletterMessageInfo: {
-                    newsletterJid: '120363319084807490@newsletter',
+                    newsletterJid: '120363340578135832@newsletter',
                     newsletterName: 'TITAN MODS V',
                     serverMessageId: 1
                 }
@@ -719,9 +716,13 @@ _“Building the future, one line of code at a time.”_
             await handleMusic(sock, msg, jid, sender, args.join(' '), sendWithLogo);
             break;
 
+        case 'ai':
         case 'imagine':
         case 'tr':
         case 'translate':
+            await handleTitanAI(sock, jid, cmd, text, msg, sendWithLogo);
+            break;
+
         case 'qr':
         case 'short':
         case 'shorten':

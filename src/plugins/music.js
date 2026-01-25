@@ -1,5 +1,5 @@
 const yts = require('yt-search');
-const ytdl = require('ytdl-core');
+const ytdl = require('@distube/ytdl-core');
 const fs = require('fs-extra');
 const path = require('path');
 const { config } = require('../../utils');
@@ -9,17 +9,17 @@ async function handleMusic(sock, msg, jid, sender, query, sendWithLogo) {
 
     try {
         await sock.sendMessage(jid, { text: `🔍 *Searching:* \`${query}\`...` }, { quoted: msg });
-        
+
         const search = await yts(query);
         const video = search.videos[0];
-        
+
         if (!video) return sendWithLogo('❌ Song not found. Try a more specific title.');
 
         await sock.sendMessage(jid, { text: `⏬ *Downloading:* \`${video.title}\`...\n\n_Channel: ${video.author.name}_` }, { quoted: msg });
 
         const videoId = video.videoId;
         const filePath = path.join(config.downloadPath, `${videoId}.mp3`);
-        
+
         // Ensure download directory exists
         fs.ensureDirSync(config.downloadPath);
 
