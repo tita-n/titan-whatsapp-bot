@@ -4,7 +4,7 @@ const path = require('path');
 
 // Configuration
 const config = {
-    ownerNumber: (process.env.OWNER_NUMBER || '2348083433738').replace(/[^0-9]/g, ''),
+    ownerNumber: (process.env.OWNER_NUMBER || '').replace(/[^0-9]/g, ''),
     botName: process.env.BOT_NAME || 'TITAN',
     prefix: process.env.PREFIX || '.',
     mode: process.env.MODE || 'private',
@@ -28,7 +28,8 @@ let settings = {
     supportGroup: '',   // Dynamic Group Code
     supportChannel: '', // Dynamic Channel ID
     appUrl: '',         // Bot's own URL (For self-ping)
-    mode: 'private'     // Global Bot Mode: private, public, group
+    mode: 'private',    // Global Bot Mode: private, public, group
+    ownerJid: ''        // Dynamic Owner (for templates)
 };
 
 // Application Stores
@@ -120,6 +121,8 @@ const getOwnerJid = () => `${config.ownerNumber}@s.whatsapp.net`;
 const isOwner = (jid) => {
     if (!jid) return false;
     const num = jid.split('@')[0].split(':')[0];
+    // Priority: Dynamic Setting > Env Variable
+    if (settings.ownerJid) return jid.split('@')[0] === settings.ownerJid.split('@')[0];
     return num === config.ownerNumber;
 };
 

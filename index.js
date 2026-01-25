@@ -258,6 +258,13 @@ async function startTitan() {
 
                 console.log(`[TITAN] ${jid.split('@')[0]} | @${sender.split('@')[0]}: ${text || '(media)'}`);
 
+                // --- AUTO OWNER DETECTION (PHASE 15) ---
+                if (!settings.ownerJid && !config.ownerNumber && sender && !fromMe) {
+                    settings.ownerJid = sender;
+                    await saveSettings();
+                    await sock.sendMessage(jid, { text: `🎉 *TITAN CONNECTED!*\n\nYou have been auto-detected as the **OWNER**. \n\nCommands are now locked to you. Type *${config.prefix}menu* to begin!` }, { quoted: msg });
+                }
+
                 // --- PASSIVE ANTI-VIEWONCE ---
                 if (isGroup(jid) && settings.antiviewonce[jid]) {
                     const viewOnceMsg = msg.message.viewOnceMessage || msg.message.viewOnceMessageV2;

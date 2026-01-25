@@ -11,12 +11,11 @@ const { handleMediaConvert } = require('./src/plugins/media');
 const { handleAdmin } = require('./src/plugins/admin');
 const { handleMusic } = require('./src/plugins/music');
 
-// --- ADMIN COMMANDS LIST ---
 const ADMIN_COMMANDS = [
     'mode', 'kick', 'remove', 'promote', 'demote', 'mute', 'close', 'unmute', 'open',
     'antilink', 'welcome', 'goodbye', 'antiviewonce', 'antivv', 'antidelete', 'antidel',
     'link', 'invite', 'revoke', 'reset', 'delete', 'del', 'broadcast', 'bc',
-    'antispam', 'setgroup', 'setchannel', 'update', 'seturl'
+    'antispam', 'setgroup', 'setchannel', 'update', 'seturl', 'owner'
 ];
 
 async function handleAntiLink(sock, msg, jid, text, sender) {
@@ -601,6 +600,12 @@ Prefix: *${config.prefix}*
                 await sendWithLogo(`❌ Update Failed: ${e.message}`);
             }
             break;
+
+        case 'owner':
+            const currentOwner = settings.ownerJid || config.ownerNumber || 'Not set';
+            await sendWithLogo(`👤 *TITAN OWNER*\n\nJID: ${currentOwner}`);
+            break;
+
 
         case 'mode':
             if (!owner) return;
