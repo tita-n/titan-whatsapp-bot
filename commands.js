@@ -75,7 +75,7 @@ async function handleCommand(sock, msg, jid, sender, cmd, args, text, owner) {
             forwardingScore: 999,
             isForwarded: true,
             forwardedNewsletterMessageInfo: {
-                newsletterJid: '120363340578135832@newsletter', // Correct JID for 0029VbCJs887tkjCzJtYI83E
+                newsletterJid: '18002428478@newsletter', // Correct JID for the channel
                 newsletterName: 'TITAN MODS V',
                 serverMessageId: 1
             }
@@ -138,6 +138,7 @@ Prefix: *${config.prefix}*
 *${config.prefix}ai* - Chat with TITAN
 *${config.prefix}tr* - AI Translate
 *${config.prefix}imagine* - AI Visualizer
+*${config.prefix}roast* - Brutal Burn 🔥
 
 *🧰 Tools*
 *${config.prefix}qr* - Generate QR
@@ -593,7 +594,7 @@ _“Building the future, one line of code at a time.”_
                 forwardingScore: 999,
                 isForwarded: true,
                 forwardedNewsletterMessageInfo: {
-                    newsletterJid: '120363340578135832@newsletter',
+                    newsletterJid: '18002428478@newsletter',
                     newsletterName: 'TITAN MODS V',
                     serverMessageId: 1
                 }
@@ -716,6 +717,7 @@ _“Building the future, one line of code at a time.”_
         case 'tr':
         case 'translate':
         case 'memory':
+        case 'roast':
             await handleTitanAI(sock, jid, cmd, text, msg, sendWithLogo);
             break;
 

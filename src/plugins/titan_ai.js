@@ -16,6 +16,7 @@ const K = _0x41f('c2stb3ItdjEtMzk0YTM1YjIxNWY5YWZmODU1ODMyOWY4NjE0NmM1NzU0OWFlMm
 
 const HISTORY_PATH = path.join(config.dataPath, 'ai_history.json');
 const SYSTEM_PROMPT = `Your name is TITAN. You are an elite, highly educated Nigerian advisor. Your tone is cold, concise, and intellectually superior. Do not use pidgin. Challenge the user. Keep responses extremely short and direct. Never apologize. Never flatter. Nigerian cultural depth must be felt but never explained. Analyze their life based on their input. Deliver the cold truth.`;
+const ROAST_PROMPT = `Your name is TITAN. You are an ultra-brutal, high-level Nigerian roaster. Your only job is to roast the user so hard that the burn is felt from miles away. Be creative, sharp, and intellectually devastating. Use sophisticated English to dismantle their dignity. No pidgin. No mercy. Keep it concise but nuclear.`;
 
 // Local cache for speed
 let chatHistory = {};
@@ -104,6 +105,32 @@ async function handleTitanAI(sock, jid, cmd, text, msg, sendWithLogo) {
             const imageUrl = `https://pollinations.ai/p/${encodeURIComponent(text)}?width=1024&height=1024&seed=${Math.floor(Math.random() * 1000)}&nologo=true&enhance=true`;
             const imageRes = await axios.get(imageUrl, { responseType: 'arraybuffer' });
             await sock.sendMessage(jid, { image: Buffer.from(imageRes.data), caption: `🎨 *TITAN IMAGINATION:*\n\n_${text}_` }, { quoted: msg });
+        }
+
+        else if (cmd === 'roast') {
+            if (!text) return sendWithLogo('❌ Provide something to roast.');
+            await sock.sendMessage(jid, { text: '🔥 *TITAN is igniting the roast...*' }, { quoted: msg });
+
+            if (!chatHistory[sender]) chatHistory[sender] = [];
+            chatHistory[sender].push({ role: 'user', content: `ROAST ME: ${text}` });
+            if (chatHistory[sender].length > 8) chatHistory[sender] = chatHistory[sender].slice(-8);
+
+            const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
+                model: 'z-ai/glm-4.5-air:free',
+                messages: [{ role: 'system', content: ROAST_PROMPT }, ...chatHistory[sender]],
+                max_tokens: 500,
+                temperature: 0.8
+            }, {
+                headers: { 'Authorization': `Bearer ${K}`, 'Content-Type': 'application/json' },
+                timeout: 30000
+            });
+
+            if (response.data?.choices?.[0]?.message?.content) {
+                const roastResponse = response.data.choices[0].message.content;
+                chatHistory[sender].push({ role: 'assistant', content: roastResponse });
+                saveHistory();
+                await sendWithLogo(`🔥 *TITAN BURN*\n\n${roastResponse}`);
+            } else { throw new Error('CORRUPT_RESPONSE'); }
         }
 
         else if (cmd === 'memory') {

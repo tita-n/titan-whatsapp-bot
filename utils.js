@@ -15,7 +15,7 @@ const config = {
     downloadPath: './downloads',
     logoPath: './titan_logo.png',
     supportGroup: 'GrrmfoKyFyC24okI6bzBWe',
-    supportChannel: '0029VbCJs887tkjCzJtYI83E'
+    supportChannel: '18002428478@newsletter'
 };
 
 // Application State (Shared)
