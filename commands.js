@@ -10,6 +10,7 @@ const { handleAI } = require('./src/plugins/ai');
 const { handleMediaConvert } = require('./src/plugins/media');
 const { handleAdmin } = require('./src/plugins/admin');
 const { handleMusic } = require('./src/plugins/music');
+const { handleTools } = require('./src/plugins/tools');
 
 const ADMIN_COMMANDS = [
     'mode', 'kick', 'remove', 'promote', 'demote', 'mute', 'close', 'unmute', 'open',
@@ -132,6 +133,16 @@ Prefix: *${config.prefix}*
 
 *🤖 Intelligence*
 *${config.prefix}ai [query]* - Chat with TITAN
+*${config.prefix}imagine [prompt]* - Create Image
+
+*🧰 Tools*
+*${config.prefix}tr [text]* - Translate to EN
+*${config.prefix}qr [text]* - Generate QR
+*${config.prefix}short [url]* - Shorten link
+*${config.prefix}carbon* - Code to Image
+*${config.prefix}meme* - Drake Memeify
+*${config.prefix}todo* - Manage List
+*${config.prefix}remind* - Set reminders
 
 *🎮 Games*
 *${config.prefix}hangman* - Start Hangman
@@ -664,6 +675,19 @@ Prefix: *${config.prefix}*
 
         case 'play':
             await handleMusic(sock, msg, jid, sender, args.join(' '), sendWithLogo);
+            break;
+
+        case 'imagine':
+        case 'tr':
+        case 'translate':
+        case 'qr':
+        case 'short':
+        case 'shorten':
+        case 'carbon':
+        case 'meme':
+        case 'remind':
+        case 'todo':
+            await handleTools(sock, msg, jid, sender, cmd, args, text, sendWithLogo);
             break;
 
         case 'seturl':

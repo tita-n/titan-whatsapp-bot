@@ -30,7 +30,9 @@ let settings = {
     supportChannel: '', // Dynamic Channel ID
     appUrl: '',         // Bot's own URL (For self-ping)
     mode: 'private',    // Global Bot Mode: private, public, group
-    ownerJid: ''        // Dynamic Owner (for templates)
+    ownerJid: '',       // Dynamic Owner (for templates)
+    reminders: [],       // Array of { id, jid, text, time }
+    todo: {}             // jid: [tasks]
 };
 
 // Application Stores
