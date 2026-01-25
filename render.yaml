@@ -9,12 +9,13 @@ services:
         value: 18.17.1
       - key: OWNER_NUMBER
         sync: false
-        description: "Your WhatsApp phone number (intl format, no + or spaces)"
+        placeholder: "e.g. 2348081234567"
+        description: "Your Phone Number (Include Country Code, but NO '+' or spaces)"
       - key: BOT_NAME
         value: "TITAN"
+        description: "What do you want to call your robot?"
       - key: PREFIX
         value: "."
-      - key: MODE
-        value: "private"
-      - key: PORT
-        value: "3000"
+        description: "The character to start commands (Example: .)"
+      - key: OPENROUTER_KEY
+        description: "AI Intelligence Key (Optional - Only if you have your own)"
