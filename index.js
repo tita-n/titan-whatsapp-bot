@@ -140,12 +140,13 @@ async function startTitan() {
     sock.ev.on('group-participants.update', async (update) => {
         try {
             const { id, participants, action } = update;
+            console.log(`[TITAN] Group Event: ${id} | Action: ${action}`);
 
             if (action === 'add' && settings.welcome[id]) {
                 let groupName = 'Group';
                 try {
                     const meta = await getCachedGroupMetadata(sock, id);
-                    groupName = meta.subject;
+                    if (meta) groupName = meta.subject;
                 } catch (e) { }
 
                 for (const participant of participants) {

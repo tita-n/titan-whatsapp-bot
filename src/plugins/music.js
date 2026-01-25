@@ -2,6 +2,7 @@ const yts = require('yt-search');
 const ytdl = require('@distube/ytdl-core');
 const fs = require('fs-extra');
 const path = require('path');
+const axios = require('axios');
 const { config } = require('../../utils');
 
 async function handleMusic(sock, msg, jid, sender, query, sendWithLogo) {
@@ -12,64 +13,68 @@ async function handleMusic(sock, msg, jid, sender, query, sendWithLogo) {
 
         const search = await yts(query);
         const video = search.videos[0];
+        if (!video) return sendWithLogo('❌ Song not found.');
 
-        if (!video) return sendWithLogo('❌ Song not found. Try a more specific title.');
-
-        await sock.sendMessage(jid, { text: `⏬ *Downloading:* \`${video.title}\`...\n\n_Channel: ${video.author.name}_` }, { quoted: msg });
-
-        const videoId = video.videoId;
-        const filePath = path.join(config.downloadPath, `${videoId}.mp3`);
-
-        // Ensure download directory exists
+        const filePath = path.join(config.downloadPath, `${video.videoId}.mp3`);
         fs.ensureDirSync(config.downloadPath);
 
-        // Native Download using ytdl-core
-        const stream = ytdl(video.url, {
-            filter: 'audioonly',
-            quality: 'highestaudio',
-        });
+        let success = false;
 
-        const fileStream = fs.createWriteStream(filePath);
-        stream.pipe(fileStream);
+        // --- ATTEMPT 1: NATIVE YTDL ---
+        try {
+            await sock.sendMessage(jid, { text: `⏬ *Downloading:* \`${video.title}\` (Native Engine)...` }, { quoted: msg });
+            const stream = ytdl(video.url, { filter: 'audioonly', quality: 'highestaudio' });
+            const fileStream = fs.createWriteStream(filePath);
+            stream.pipe(fileStream);
 
-        await new Promise((resolve, reject) => {
-            fileStream.on('finish', resolve);
-            fileStream.on('error', reject);
-            stream.on('error', reject);
-        });
-
-        // Check if file exists and has size
-        if (!fs.existsSync(filePath) || fs.statSync(filePath).size === 0) {
-            throw new Error('File download failed or empty');
+            await new Promise((resolve, reject) => {
+                fileStream.on('finish', resolve);
+                fileStream.on('error', reject);
+                stream.on('error', reject);
+                setTimeout(() => reject(new Error('Timeout')), 60000);
+            });
+            if (fs.existsSync(filePath) && fs.statSync(filePath).size > 0) success = true;
+        } catch (e) {
+            console.log('[TITAN MUSIC] Native Engine failed, switching to Fallback API...');
         }
 
-        await sock.sendMessage(jid, { text: '📤 *Sending audio...*' }, { quoted: msg });
-
-        await sock.sendMessage(jid, {
-            audio: { url: filePath },
-            mimetype: 'audio/mpeg',
-            fileName: `${video.title}.mp3`,
-            ptt: false, // Normal audio view
-            contextInfo: {
-                externalAdReply: {
-                    title: video.title,
-                    body: video.author.name,
-                    mediaType: 2,
-                    thumbnailUrl: video.thumbnail,
-                    sourceUrl: video.url
+        // --- ATTEMPT 2: FALLBACK API ---
+        if (!success) {
+            try {
+                await sock.sendMessage(jid, { text: `🔄 *Switching Engine...* (Cloud Relay)` }, { quoted: msg });
+                const res = await axios.get(`https://api.vyt.moe/v1/download?url=${encodeURIComponent(video.url)}&format=mp3`, { timeout: 30000 });
+                if (res.data?.url) {
+                    const mediaRes = await axios.get(res.data.url, { responseType: 'arraybuffer' });
+                    fs.writeFileSync(filePath, Buffer.from(mediaRes.data));
+                    success = true;
                 }
-            }
-        }, { quoted: msg });
+            } catch (e) { }
+        }
 
-        // Cleanup
-        fs.removeSync(filePath);
+        if (success) {
+            await sock.sendMessage(jid, {
+                audio: { url: filePath },
+                mimetype: 'audio/mpeg',
+                fileName: `${video.title}.mp3`,
+                ptt: false,
+                contextInfo: {
+                    externalAdReply: {
+                        title: video.title,
+                        body: video.author.name,
+                        mediaType: 2,
+                        thumbnailUrl: video.thumbnail,
+                        sourceUrl: video.url
+                    }
+                }
+            }, { quoted: msg });
+            fs.removeSync(filePath);
+        } else {
+            throw new Error('All engines failed');
+        }
 
     } catch (e) {
-        console.error('[TITAN MUSIC] Error:', e);
-        await sendWithLogo('❌ Song not found or server error 😔. Try again later.');
-        // Cleanup on error if file exists
-        const partialFile = path.join(config.downloadPath, `${query.replace(/\s+/g, '_')}.mp3`);
-        if (fs.existsSync(partialFile)) fs.removeSync(partialFile);
+        console.error('[TITAN MUSIC] Error:', e.message);
+        await sendWithLogo('❌ All music engines are throttled. Please try again in a few minutes.');
     }
 }
 
