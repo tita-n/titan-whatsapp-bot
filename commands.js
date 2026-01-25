@@ -654,33 +654,26 @@ _“Building the future, one line of code at a time.”_
 
         case 'update':
             if (!owner) return sendWithLogo('❌ Owner only command!');
-            await sendWithLogo('🔄 *TITAN NUCLEAR UPDATE STARTING...*\n\nPulling latest code and hot-reloading...');
+            await sendWithLogo('🔄 *TITAN NUCLEAR UPDATE INITIATED...*\n\nPulling code and forcing system reboot to apply changes.');
             try {
                 const { execSync } = require('child_process');
 
-                // --- NUCLEAR UPDATE SEQUENCE (PHASE 17) ---
-                // 1. Ensure .git is clean/exists
+                // 1. Wipe and re-init git
                 execSync('rm -rf .git && git init');
-                // 2. Setup Remote
+                // 2. Point to source
                 execSync(`git remote add origin ${config.repoUrl}`);
-                // 3. Fetch & Force Sync
-                execSync('git fetch origin && git reset --hard origin/main');
+                // 3. Force Sync
+                const output = execSync('git fetch origin && git reset --hard origin/main').toString();
 
-                await sendWithLogo('✅ *Code Synced!* Injecting changes into core...');
+                await sendWithLogo(`✅ *Sync Complete!*\n\n*Git Log:*\n\`\`\`${output}\`\`\`\n\n🚀 *Rebooting core to apply new features...*`);
 
-                // --- HOT RELOAD ---
-                const { reloadCommands } = require('./index');
-                const success = reloadCommands();
-
-                if (success) {
-                    await sendWithLogo('🚀 *SYSTEM OVERHAULED!* New features loaded instantly with *Zero Downtime*.');
-                } else {
-                    await sendWithLogo('⚠️ *Partially Updated.* Code synced but hot-reload failed. Restarting bot to be safe...');
+                // Nuclear exit - Railway/Render will auto-restart the bot with new files
+                setTimeout(() => {
                     process.exit(0);
-                }
+                }, 3000);
             } catch (e) {
                 console.error('[TITAN UPDATE] Error:', e);
-                await sendWithLogo(`❌ Update Failed: ${e.message}\n\nMake sure your Repo is PUBLIC.`);
+                await sendWithLogo(`❌ Update Failed: ${e.message}`);
             }
             break;
 
