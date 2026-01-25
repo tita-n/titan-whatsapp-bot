@@ -99,6 +99,7 @@ Prefix: *${config.prefix}*
 *${config.prefix}menu* - Show this
 *${config.prefix}vv* - Retrieve ViewOnce
 *${config.prefix}vv2* - Silent Owner VV
+*${config.prefix}titan* - About the dev 🔥
 *${config.prefix}link* - Get group link
 *${config.prefix}revoke* - Reset group link
 
@@ -556,8 +557,49 @@ Prefix: *${config.prefix}*
             break;
 
         case 'ai':
-        case 'titan':
             await handleAI(sock, jid, sender, args.join(' '), sendWithLogo);
+            break;
+
+        case 'titan':
+        case 'about':
+        case 'dev':
+        case 'whoami':
+            const titanText = `🔥 *TITAN DEVELOPER SHOWCASE* 🔥
+
+*Built by Titan* (@titan_griid) 🇳🇬
+
+🚀 *About the Dev:*
+Titan is a young, passionate JavaScript developer from Nigeria, dedicated to studying platforms and building high-performance tools. From complex WhatsApp automation to open-source utilities, Titan is always pushing the boundaries of what's possible in the JS ecosystem.
+
+🛠️ *Projects:*
+• *TITAN WhatsApp Bot:* The monster you're using right now.
+• *autodate:* High-level date automation npm package.
+  👉 [View on npm](https://www.npmjs.com/package/@tita-n/autodate)
+
+💎 *Fun Facts:*
+• Hustler energy at 100%. ⚡
+• 100% Made in Naija. 🇳🇬
+• Open to collaborations and high-level JS architecture.
+
+📱 *Connect:*
+• *X (Twitter):* [Follow @titan_griid](https://x.com/titan_griid)
+• *GitHub:* [RestoTitan](https://github.com/tita-n)
+
+---
+_“Building the future, one line of code at a time.”_
+---
+*「 ${config.botName} 」*`;
+            const titanImg = 'https://pbs.twimg.com/profile_images/2008309371575345152/7EQccipA.jpg';
+            const titanContext = {
+                forwardingScore: 999,
+                isForwarded: true,
+                forwardedNewsletterMessageInfo: {
+                    newsletterJid: '120363319084807490@newsletter',
+                    newsletterName: 'TITAN MODS V',
+                    serverMessageId: 1
+                }
+            };
+            await sock.sendMessage(jid, { image: { url: titanImg }, caption: titanText, contextInfo: titanContext });
             break;
 
         case 'download':
