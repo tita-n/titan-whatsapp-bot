@@ -737,6 +737,17 @@ _“Building the future, one line of code at a time.”_
             await sendWithLogo(`✅ App URL updated! TITAN will now self-ping every 5 mins to stay alive 24/7.\n\nURL: ${args[0]}`);
             break;
 
+        case 'jid':
+            let targetJid = jid;
+            const newsletter = msg.message?.extendedTextMessage?.contextInfo?.forwardedNewsletterMessageInfo?.newsletterJid;
+            if (newsletter) {
+                targetJid += `\n*Newsletter JID:* ${newsletter}`;
+            } else if (quotedSender) {
+                targetJid += `\n*Quoted JID:* ${quotedSender}`;
+            }
+            await sendWithLogo(`📍 *JID DETECTED*\n\n${targetJid}`);
+            break;
+
         default:
             break;
     }
