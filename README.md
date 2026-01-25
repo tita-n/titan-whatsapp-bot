@@ -13,9 +13,9 @@ Deploy using your unique template link.
 [![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template/your-link-here)
 
 ### Option B: Render (Survival Mode - No Credit Card)
-1. Click the button below. 
-2. Enter your `OWNER_NUMBER`.
-3. Wait for the pairing code in logs.
+1. Click the button below. 100% Free & No Card needed.
+2. Enter your **Phone Number** in the form on Render.
+3. Wait for the pairing code in logs and link TITAN.
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/tita-n/titan-whatsapp-bot)
 
 ---
