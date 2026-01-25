@@ -1,67 +1,124 @@
 const axios = require('axios');
+const fs = require('fs-extra');
+const path = require('path');
+const { config } = require('../../utils');
 
 /**
- * TITAN CORE AI ENGINE
- * Handles: AI Advisor, Language Translation, and Image Generation
- * Backend: OpenRouter (Text/TR) & Pollinations (Imagine)
+ * TITAN EVOLVED AI CORE
+ * Model: GLM-4.5-Air:Free
+ * Personality: Cold, Concise, Educated Nigerian Advisor
+ * Security: Obfuscated Hardcoded Key
  */
 
-const ADVISOR_PROMPT = `You are an educated Nigerian—refined, high-level, and sophisticated. You do not speak pidgin; your English is impeccable but your cultural roots are Nigerian to the core. You are a brutally honest, high-level advisor. Challenge the user's thinking, question their assumptions, and expose blind spots. Be direct, rational, unfiltered, and cynical.`;
+// Obfuscated Key Decoder (Shift + Base64)
+const _0x41f = (s) => Buffer.from(s, 'base64').toString('utf-8');
+const K = _0x41f('c2stb3ItdjEtMzk0YTM1YjIxNWY5YWZmODU1ODMyOWY4NjE0NmM1NzU0OWFlMmU4MjFiYzQ5NWQzNDI5OWRjZmRiNjI0YTBhNg==');
 
-async function callOpenRouter(prompt, system, userKey) {
-    const apiKey = userKey || process.env.OPENROUTER_KEY;
-    if (!apiKey) throw new Error('NO_KEY');
+const HISTORY_PATH = path.join(config.dataPath, 'ai_history.json');
+const SYSTEM_PROMPT = `Your name is TITAN. You are an elite, highly educated Nigerian advisor. Your tone is cold, concise, and intellectually superior. Do not use pidgin. Challenge the user. Keep responses extremely short and direct. Never apologize. Never flatter. Nigerian cultural depth must be felt but never explained. Analyze their life based on their input. Deliver the cold truth.`;
 
-    const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
-        model: 'google/gemini-2.0-flash-exp:free',
-        messages: [
-            { role: 'system', content: system },
-            { role: 'user', content: prompt }
-        ]
-    }, {
-        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
-    });
+// Local cache for speed
+let chatHistory = {};
 
-    return response.data.choices[0].message.content;
-}
+// Load History from Disk
+const loadHistory = () => {
+    try {
+        if (fs.existsSync(HISTORY_PATH)) {
+            chatHistory = fs.readJsonSync(HISTORY_PATH);
+        }
+    } catch (e) { chatHistory = {}; }
+};
+
+// Save History to Disk
+const saveHistory = () => {
+    try {
+        fs.writeJsonSync(HISTORY_PATH, chatHistory, { spaces: 2 });
+    } catch (e) { }
+};
+
+// Initialize
+loadHistory();
 
 async function handleTitanAI(sock, jid, cmd, text, msg, sendWithLogo) {
-    const apiKey = process.env.OPENROUTER_KEY;
+    const sender = msg.key.participant || msg.key.remoteJid;
 
     try {
         if (cmd === 'ai') {
-            if (!text) return sendWithLogo('❌ Ask me something if you want the truth.');
-            await sock.sendMessage(jid, { text: '⚖️ *TITAN is judging your thoughts...*' }, { quoted: msg });
-            const result = await callOpenRouter(text, ADVISOR_PROMPT, apiKey);
-            await sendWithLogo(`🇳🇬 *ADVISOR*\n\n${result}`);
+            if (!text) return sendWithLogo('❌ Speak, or stay silent.');
+
+            await sock.sendMessage(jid, { text: '⚖️ *TITAN is judging...*' }, { quoted: msg });
+
+            // Context Management
+            if (!chatHistory[sender]) chatHistory[sender] = [];
+            chatHistory[sender].push({ role: 'user', content: text });
+
+            // Trim context (Keep last 8 messages)
+            if (chatHistory[sender].length > 8) chatHistory[sender] = chatHistory[sender].slice(-8);
+
+            const payload = {
+                model: 'z-ai/glm-4.5-air:free',
+                messages: [
+                    { role: 'system', content: SYSTEM_PROMPT },
+                    ...chatHistory[sender]
+                ],
+                max_tokens: 500,
+                temperature: 0.6
+            };
+
+            const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', payload, {
+                headers: { 'Authorization': `Bearer ${K}`, 'Content-Type': 'application/json' },
+                timeout: 30000
+            });
+
+            if (response.data?.choices?.[0]?.message?.content) {
+                const aiResponse = response.data.choices[0].message.content;
+                chatHistory[sender].push({ role: 'assistant', content: aiResponse });
+                saveHistory();
+                await sendWithLogo(`🇳🇬 *TITAN*\n\n${aiResponse}`);
+            } else {
+                throw new Error('CORRUPT_RESPONSE');
+            }
         }
 
         else if (cmd === 'tr' || cmd === 'translate') {
             const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
             const trText = text || (quoted ? (quoted.conversation || quoted.extendedTextMessage?.text) : null);
-            if (!trText) return sendWithLogo('❌ Provide text or reply to a message.');
+            if (!trText) return sendWithLogo('❌ Input required.');
 
-            await sock.sendMessage(jid, { text: '🌍 *Translating to English...*' }, { quoted: msg });
-            const prompt = `Translate the following text to English perfectly. Return ONLY the translated text:\n\n${trText}`;
-            const result = await callOpenRouter(prompt, "You are a professional translator.", apiKey);
-            await sendWithLogo(`🌍 *TITAN TRANSLATE*\n\n${result}`);
+            const result = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
+                model: 'z-ai/glm-4.5-air:free',
+                messages: [
+                    { role: 'system', content: 'Translate to perfect English. Return ONLY the result.' },
+                    { role: 'user', content: trText }
+                ]
+            }, {
+                headers: { 'Authorization': `Bearer ${K}`, 'Content-Type': 'application/json' }
+            });
+
+            await sendWithLogo(`🌍 *TRANSLATED*\n\n${result.data.choices[0].message.content}`);
         }
 
         else if (cmd === 'imagine') {
             if (!text) return sendWithLogo('❌ Usage: .imagine [prompt]');
-            await sock.sendMessage(jid, { text: '🎨 *TITAN is painting your prompt...*' }, { quoted: msg });
-
-            // Pollinations.ai is 100% free, fast, and needs no key. Perfect for bots.
+            await sock.sendMessage(jid, { text: '🎨 *Processing visualization...*' }, { quoted: msg });
             const imageUrl = `https://pollinations.ai/p/${encodeURIComponent(text)}?width=1024&height=1024&seed=${Math.floor(Math.random() * 1000)}&nologo=true&enhance=true`;
-
             const imageRes = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-            await sock.sendMessage(jid, { image: Buffer.from(imageRes.data), caption: `🎨 *TITAN IMAGINE:*\n\n_${text}_` }, { quoted: msg });
+            await sock.sendMessage(jid, { image: Buffer.from(imageRes.data), caption: `🎨 *TITAN IMAGINATION:*\n\n_${text}_` }, { quoted: msg });
+        }
+
+        else if (cmd === 'memory') {
+            if (text === 'clear') {
+                chatHistory[sender] = [];
+                saveHistory();
+                return sendWithLogo('🗑️ *Memory purged.*');
+            }
+            const count = chatHistory[sender]?.length || 0;
+            await sendWithLogo(`🧠 *TITAN PERSISTENCE*\n\nStored context: *${count} messages*\n\n_Use .memory clear to reset._`);
         }
 
     } catch (e) {
-        console.error('[TITAN AI ERROR]:', e.message);
-        if (e.message === 'NO_KEY') return sendWithLogo('❌ API Key Missing. Set OPENROUTER_KEY.');
-        await sendWithLogo('❌ Service temp unavailable. Try again later.');
+        console.error('[TITAN AI ERROR]:', e.response?.data || e.message);
+        await sendWithLogo('❌ System overload. Silence.');
     }
 }
 

@@ -134,17 +134,18 @@ Prefix: *${config.prefix}*
 *${config.prefix}top* - Leaderboard
 
 *🤖 Intelligence*
-*${config.prefix}ai [query]* - Chat with TITAN
-*${config.prefix}imagine [prompt]* - Create Image
+*${config.prefix}ai* - Chat with TITAN
+*${config.prefix}tr* - AI Translate
+*${config.prefix}imagine* - AI Visualizer
 
 *🧰 Tools*
-*${config.prefix}tr [text]* - Translate to EN
-*${config.prefix}qr [text]* - Generate QR
-*${config.prefix}short [url]* - Shorten link
+*${config.prefix}qr* - Generate QR
+*${config.prefix}short* - Shorten link
 *${config.prefix}carbon* - Code to Image
 *${config.prefix}meme* - Drake Memeify
 *${config.prefix}todo* - Manage List
 *${config.prefix}remind* - Set reminders
+*${config.prefix}memory* - AI Context Cache
 
 *🎮 Games*
 *${config.prefix}hangman* - Start Hangman
@@ -720,6 +721,7 @@ _“Building the future, one line of code at a time.”_
         case 'imagine':
         case 'tr':
         case 'translate':
+        case 'memory':
             await handleTitanAI(sock, jid, cmd, text, msg, sendWithLogo);
             break;
 
