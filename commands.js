@@ -129,12 +129,15 @@ Prefix: *${config.prefix}*
 *${config.prefix}join* - Join an active lobby
 
 *⚙️ Config (Owner)*
-*${config.prefix}mode [type]* - private / public / group
-*${config.prefix}broadcast [msg]* - Group BC
-*${config.prefix}setgroup [code]* - Edit support
-*${config.prefix}setchannel [id]* - Edit channel
-*${config.prefix}seturl [url]* - Stay alive 24/7
-*${config.prefix}update* - Flash update
+*${config.prefix}mode* - Switch access
+*${config.prefix}owner* - Show owner
+*${config.prefix}broadcast* - Group BC
+*${config.prefix}setgroup* - Edit support
+*${config.prefix}setchannel* - Edit channel
+*${config.prefix}seturl* - Stay alive 24/7
+*${config.prefix}uptime* - System uptime
+*${config.prefix}update* - Flash update (Zero Downtime)
+*${config.prefix}restart* - Force reboot
 
 *Current Mode:* ${settings.mode || 'private'}`;
             await sendWithLogo(menuText);
