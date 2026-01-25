@@ -378,6 +378,21 @@ async function startTitan() {
             }
         }
     });
+
+    // --- REMINDER SCHEDULER (PHASE 19) ---
+    cron.schedule('* * * * *', async () => {
+        const now = Date.now();
+        const due = settings.reminders.filter(r => r.time <= now);
+        if (due.length > 0) {
+            for (const r of due) {
+                try {
+                    await sock.sendMessage(r.jid, { text: `⏰ *TITAN REMINDER*\n\nHey @${r.sender.split('@')[0]}, you asked me to remind you about:\n\n"*${r.task}*"`, mentions: [r.sender] });
+                } catch (e) { }
+            }
+            settings.reminders = settings.reminders.filter(r => r.time > now);
+            await saveSettings();
+        }
+    });
 }
 
 module.exports = { startTitan, reloadCommands };
