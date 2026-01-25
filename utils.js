@@ -27,7 +27,8 @@ let settings = {
     antispam: {},       // jid: true/false
     supportGroup: '',   // Dynamic Group Code
     supportChannel: '', // Dynamic Channel ID
-    appUrl: ''          // Bot's own URL (For self-ping)
+    appUrl: '',         // Bot's own URL (For self-ping)
+    mode: 'private'     // Global Bot Mode: private, public, group
 };
 
 // Application Stores

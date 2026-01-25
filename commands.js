@@ -11,6 +11,14 @@ const { handleMediaConvert } = require('./src/plugins/media');
 const { handleAdmin } = require('./src/plugins/admin');
 const { handleMusic } = require('./src/plugins/music');
 
+// --- ADMIN COMMANDS LIST ---
+const ADMIN_COMMANDS = [
+    'mode', 'kick', 'remove', 'promote', 'demote', 'mute', 'close', 'unmute', 'open',
+    'antilink', 'welcome', 'goodbye', 'antiviewonce', 'antivv', 'antidelete', 'antidel',
+    'link', 'invite', 'revoke', 'reset', 'delete', 'del', 'broadcast', 'bc',
+    'antispam', 'setgroup', 'setchannel', 'update', 'seturl'
+];
+
 async function handleAntiLink(sock, msg, jid, text, sender) {
     if (!settings.antilink[jid]) return false; // Use Shared Settings
 
@@ -39,6 +47,13 @@ async function handleAntiLink(sock, msg, jid, text, sender) {
 }
 
 async function handleCommand(sock, msg, jid, sender, cmd, args, text, owner) {
+    // --- ADMIN PROTECTION ---
+    const isAdminCmd = ADMIN_COMMANDS.includes(cmd);
+    if (isAdminCmd && !owner) {
+        // Silently ignore if not owner trying to run admin command
+        return;
+    }
+
     const mentions = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
     const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
     const quotedSender = msg.message?.extendedTextMessage?.contextInfo?.participant;
@@ -115,11 +130,14 @@ Prefix: *${config.prefix}*
 *${config.prefix}join* - Join an active lobby
 
 *⚙️ Config (Owner)*
+*${config.prefix}mode [type]* - private / public / group
 *${config.prefix}broadcast [msg]* - Group BC
 *${config.prefix}setgroup [code]* - Edit support
 *${config.prefix}setchannel [id]* - Edit channel
 *${config.prefix}seturl [url]* - Stay alive 24/7
-*${config.prefix}update* - Flash update`;
+*${config.prefix}update* - Flash update
+
+*Current Mode:* ${settings.mode || 'private'}`;
             await sendWithLogo(menuText);
             break;
 
@@ -583,6 +601,17 @@ Prefix: *${config.prefix}*
                 await sendWithLogo(`❌ Update Failed: ${e.message}`);
             }
             break;
+
+        case 'mode':
+            if (!owner) return;
+            if (!args[0]) return sendWithLogo(`Current Bot Mode: *${settings.mode || 'private'}*\n\nAvailable:\n- *.mode private* (Owner only)\n- *.mode public* (Anyone)\n- *.mode group* (Anyone in groups)`);
+            const targetMode = args[0].toLowerCase();
+            if (!['private', 'public', 'group'].includes(targetMode)) return sendWithLogo('❌ Invalid mode. Use: private, public, or group.');
+            settings.mode = targetMode;
+            await saveSettings();
+            await sendWithLogo(`✅ Bot mode switched to *${targetMode.toUpperCase()}*! 🚀`);
+            break;
+
 
         case 'play':
             await handleMusic(sock, msg, jid, sender, args.join(' '), sendWithLogo);

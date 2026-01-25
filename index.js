@@ -280,6 +280,24 @@ async function startTitan() {
                     if (await handleAntiLink(sock, msg, jid, text, sender)) continue;
                 }
 
+                // --- MODE CONTROL (PHASE 14) ---
+                const mode = settings.mode || 'private';
+                const owner = isOwner(sender);
+                const isGroupChat = isGroup(jid);
+
+                // Logic: 
+                // 1. Owner ALWAYS allowed.
+                // 2. Private: Only owner allowed.
+                // 3. Group: Allowed if in group. (In PM, only owner).
+                // 4. Public: Allowed everywhere.
+                let allowed = owner;
+                if (!allowed) {
+                    if (mode === 'public') allowed = true;
+                    else if (mode === 'group' && isGroupChat) allowed = true;
+                }
+
+                if (!allowed) continue;
+
                 // --- ANTI-SPAM ---
                 if (isGroup(jid) && settings.antispam && settings.antispam[jid] && !fromMe) {
                     const now = Date.now();
@@ -311,12 +329,9 @@ async function startTitan() {
                 // --- GAME INPUT ---
                 const game = gameStore.get(jid);
                 if (game && game.status === 'active' && !text.startsWith(config.prefix)) {
-                    await handleCommand(sock, msg, jid, sender, `_game_input_`, [], text);
+                    await handleCommand(sock, msg, jid, sender, `_game_input_`, [], text, owner);
                     continue;
                 }
-
-                const owner = isOwner(sender);
-                if (!owner && !fromMe && config.mode === 'self') continue;
 
                 if (!text.startsWith(config.prefix)) continue;
 
