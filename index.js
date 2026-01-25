@@ -232,9 +232,16 @@ async function startTitan() {
                 console.log('[TITAN] Reconnecting in 5s...');
                 setTimeout(() => startTitan(), 5000);
             } else {
-                console.log('[TITAN] Session terminated. Manual intervention required.');
-                if (reason === 401 || reason === 405) fs.emptyDirSync(config.authPath);
-                process.exit(1);
+                if (reason === 401 || reason === 405) {
+                    console.log('[TITAN] Session EXPIRED or REVOKED. Wiping and requesting new pair...');
+                    fs.emptyDirSync(config.authPath);
+                    isPairingRequested = false; // Reset to allow new code
+                    pairingCode = '';
+                    setTimeout(() => startTitan(), 2000);
+                } else {
+                    console.log('[TITAN] Session terminated. Manual intervention required.');
+                    process.exit(1);
+                }
             }
         }
     });
