@@ -8,14 +8,14 @@ const config = {
     botName: process.env.BOT_NAME || 'TITAN',
     prefix: process.env.PREFIX || '.',
     mode: process.env.MODE || 'private',
-    repoUrl: process.env.REPO_URL || 'https://github.com/yourusername/your-bot-repo.git',
+    repoUrl: 'https://github.com/RestoTitan/TITAN-V.git',
     port: process.env.PORT ? parseInt(process.env.PORT.toString().trim()) : 3000,
     authPath: './auth_info',
     dataPath: './data',
     downloadPath: './downloads',
     logoPath: './titan_logo.png',
-    supportGroup: 'Fes6TfTWL7vGxb92wbO2oj', // https://chat.whatsapp.com/Fes6TfTWL7vGxb92wbO2oj
-    supportChannel: '0029VbAfo9dJ3jv3zgM3KQ3E' // https://whatsapp.com/channel/0029VbAfo9dJ3jv3zgM3KQ3E
+    supportGroup: 'GrrmfoKyFyC24okI6bzBWe',
+    supportChannel: '0029VbCJs887tkjCzJtYI83E'
 };
 
 // Application State (Shared)

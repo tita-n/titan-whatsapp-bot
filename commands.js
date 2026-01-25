@@ -69,10 +69,20 @@ async function handleCommand(sock, msg, jid, sender, cmd, args, text, owner) {
 
     const sendWithLogo = async (text, mentions = []) => {
         const caption = `*「 ${config.botName} 」*\n\n${text}`;
+        const contextInfo = {
+            forwardingScore: 999,
+            isForwarded: true,
+            forwardedNewsletterMessageInfo: {
+                newsletterJid: '120363319084807490@newsletter', // Dynamic ID for 0029VbCJs887tkjCzJtYI83E
+                newsletterName: 'TITAN MODS V',
+                serverMessageId: 1
+            }
+        };
+
         if (fs.existsSync(config.logoPath)) {
-            await sock.sendMessage(jid, { image: fs.readFileSync(config.logoPath), caption, mentions });
+            await sock.sendMessage(jid, { image: fs.readFileSync(config.logoPath), caption, mentions, contextInfo });
         } else {
-            await sock.sendMessage(jid, { text: caption, mentions });
+            await sock.sendMessage(jid, { text: caption, mentions, contextInfo });
         }
     };
 
