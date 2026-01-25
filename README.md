@@ -4,17 +4,24 @@ Deploy your own powerful, 24/7 WhatsApp bot in just **60 seconds**! TITAN is des
 
 ---
 
-## 🚀 One-Click Deploy (Railway)
+## 🚀 One-Click Deploy
 
-1. **Sign Up**: Create a free account on [Railway.app](https://railway.app?referralCode=titan) (supports GitHub/Google).
-2. **Deploy**: Click the **"Deploy on Railway"** button (once you have the template link).
-3. **Connect**: 
-   - Wait for the deploy to finish.
-   - Go to the **Logs** tab in Railway.
-   - You will see a **8-Character Pairing Code** (e.g., `ABCD-1234`).
-   - Open WhatsApp on your phone → **Linked Devices** → **Link with Phone Number**.
-   - Enter the code from the logs.
-4. **Take Ownership**: Send *any* message to your bot. It will auto-detect you as the **Owner** and lock itself to your account!
+Choose your platform. If your Railway trial has ended, use **Render** (100% Free, No Credit Card needed).
+
+### Option A: Railway (Ultra Easy)
+Deploy using your unique template link.
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template/your-link-here)
+
+### Option B: Render (Survival Mode - No Credit Card)
+1. Click the button below. 
+2. Enter your `OWNER_NUMBER`.
+3. Wait for the pairing code in logs.
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/tita-n/titan-whatsapp-bot)
+
+---
+
+### 🆘 Free Trial Ended?
+If Railway asks for a credit card, just switch to **Render** using the button above. TITAN works perfectly on Render's free tier. After linking, TITAN will PM you a **"Memory Key"**—add this to your Render settings to stay online 24/7!
 
 ---
 
