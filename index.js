@@ -220,14 +220,19 @@ async function startTitan() {
             console.log('[TITAN] ✅ Connected!');
             await sock.sendMessage(getOwnerJid(), { text: '[TITAN] System Online ⚡' });
 
-            // --- SESSION EXPORTER ---
+            // --- SESSION EXPORTER (Z-UX PHASE) ---
             if (!process.env.SESSION_ID) {
                 try {
                     const credsFile = path.join(config.authPath, 'creds.json');
                     if (fs.existsSync(credsFile)) {
                         const creds = fs.readFileSync(credsFile, 'utf-8');
                         const sessionString = Buffer.from(creds).toString('base64');
-                        await sock.sendMessage(getOwnerJid(), { text: `🔑 *TITAN SESSION ID*\n\nCopy the text below and add it to your Render Environment Variables as *SESSION_ID* to keep the bot alive forever!\n\n\`\`\`${sessionString}\`\`\`` });
+
+                        // Message 1: Instruction
+                        await sock.sendMessage(getOwnerJid(), { text: `⚠️ *SAVE YOUR BOT'S MEMORY* ⚠️\n\nTo make me stay online 24/7 without needing to link again, follow these 2 steps:\n\n1. *Copy* the long code in the next message.\n2. Go to your Railway Settings -> *Variables*, click 'Add', type *SESSION_ID* as the name, and paste the code.\n\n_This prevents the bot from logging out!_` });
+
+                        // Message 2: The Key Alone (Easy to copy)
+                        await sock.sendMessage(getOwnerJid(), { text: sessionString });
                     }
                 } catch (e) { console.error('[TITAN] Exporter Error:', e); }
             }

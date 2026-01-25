@@ -1,0 +1,29 @@
+{
+    "$schema": "https://railway.app/railway.schema.json",
+    "build": {
+        "builder": "NIXPACKS"
+    },
+    "deploy": {
+        "startCommand": "node index.js",
+        "healthcheckPath": "/",
+        "healthcheckTimeout": 300
+    },
+    "variables": {
+        "OWNER_NUMBER": {
+            "description": "Your WhatsApp phone number (e.g., 234808...)",
+            "required": true
+        },
+        "BOT_NAME": {
+            "description": "Display name of your bot",
+            "default": "TITAN"
+        },
+        "PREFIX": {
+            "description": "Command character",
+            "default": "."
+        },
+        "MODE": {
+            "description": "Initial access mode (private/public/group)",
+            "default": "private"
+        }
+    }
+}
