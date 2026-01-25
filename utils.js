@@ -8,6 +8,7 @@ const config = {
     botName: process.env.BOT_NAME || 'TITAN',
     prefix: process.env.PREFIX || '.',
     mode: process.env.MODE || 'private',
+    repoUrl: process.env.REPO_URL || 'https://github.com/yourusername/your-bot-repo.git',
     port: process.env.PORT ? parseInt(process.env.PORT.toString().trim()) : 3000,
     authPath: './auth_info',
     dataPath: './data',

@@ -12,7 +12,26 @@ const path = require('path');
 
 // Modules
 const { config, isOwner, isGroup, getMessageText, getOwnerJid, settings, msgStore, spamTracker, gameStore, getCachedGroupMetadata } = require('./utils');
-const { handleCommand, handleAntiLink } = require('./commands');
+
+// --- DYNAMIC COMMAND LOADER (PHASE 17) ---
+let { handleCommand, handleAntiLink } = require('./commands');
+
+/**
+ * Hot-reloads the commands module without restarting the bot
+ */
+function reloadCommands() {
+    try {
+        delete require.cache[require.resolve('./commands')];
+        const newCmds = require('./commands');
+        handleCommand = newCmds.handleCommand;
+        handleAntiLink = newCmds.handleAntiLink;
+        console.log('[TITAN] Commands HOT-RELOADED 🚀');
+        return true;
+    } catch (e) {
+        console.error('[TITAN] Reload Error:', e);
+        return false;
+    }
+}
 
 // Ensure dirs
 fs.ensureDirSync(config.authPath);
@@ -359,5 +378,7 @@ async function startTitan() {
         }
     });
 }
+
+module.exports = { startTitan, reloadCommands };
 
 startTitan();

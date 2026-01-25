@@ -15,7 +15,7 @@ const ADMIN_COMMANDS = [
     'mode', 'kick', 'remove', 'promote', 'demote', 'mute', 'close', 'unmute', 'open',
     'antilink', 'welcome', 'goodbye', 'antiviewonce', 'antivv', 'antidelete', 'antidel',
     'link', 'invite', 'revoke', 'reset', 'delete', 'del', 'broadcast', 'bc',
-    'antispam', 'setgroup', 'setchannel', 'update', 'seturl', 'owner'
+    'antispam', 'setgroup', 'setchannel', 'update', 'seturl', 'owner', 'restart'
 ];
 
 async function handleAntiLink(sock, msg, jid, text, sender) {
@@ -590,16 +590,47 @@ Prefix: *${config.prefix}*
 
         case 'update':
             if (!owner) return sendWithLogo('❌ Owner only command!');
-            await sendWithLogo('🚀 *Syncing with TITAN Core...*');
+            await sendWithLogo('🔄 *TITAN NUCLEAR UPDATE STARTING...*\n\nPulling latest code and hot-reloading...');
             try {
                 const { execSync } = require('child_process');
+
+                // --- NUCLEAR UPDATE SEQUENCE (PHASE 17) ---
+                // 1. Ensure .git is clean/exists
+                execSync('rm -rf .git && git init');
+                // 2. Setup Remote
+                execSync(`git remote add origin ${config.repoUrl}`);
+                // 3. Fetch & Force Sync
                 execSync('git fetch origin && git reset --hard origin/main');
-                await sendWithLogo('✅ *System Overhauled!* Rebooting for final changes...');
-                process.exit(0);
+
+                await sendWithLogo('✅ *Code Synced!* Injecting changes into core...');
+
+                // --- HOT RELOAD ---
+                const { reloadCommands } = require('./index');
+                const success = reloadCommands();
+
+                if (success) {
+                    await sendWithLogo('🚀 *SYSTEM OVERHAULED!* New features loaded instantly with *Zero Downtime*.');
+                } else {
+                    await sendWithLogo('⚠️ *Partially Updated.* Code synced but hot-reload failed. Restarting bot to be safe...');
+                    process.exit(0);
+                }
             } catch (e) {
-                await sendWithLogo(`❌ Update Failed: ${e.message}`);
+                console.error('[TITAN UPDATE] Error:', e);
+                await sendWithLogo(`❌ Update Failed: ${e.message}\n\nMake sure your Repo is PUBLIC.`);
             }
             break;
+
+        case 'restart':
+            if (!owner) return;
+            await sendWithLogo('🔄 *Rebooting core...* See you in 5 seconds.');
+            process.exit(0);
+            break;
+
+        case 'uptime':
+            const uptime = moment.duration(Date.now() - startTime).humanize();
+            await sendWithLogo(`⚡ *TITAN UPTIME*\n\nRunning smoothly for: *${uptime}*`);
+            break;
+
 
         case 'owner':
             const currentOwner = settings.ownerJid || config.ownerNumber || 'Not set';
