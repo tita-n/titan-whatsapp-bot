@@ -101,6 +101,7 @@ Prefix: *${config.prefix}*
 *${config.prefix}vv* - Retrieve ViewOnce
 *${config.prefix}vv2* - Silent Owner VV
 *${config.prefix}titan* - About the dev 🔥
+*${config.prefix}jid* - Get Chat JID
 *${config.prefix}link* - Get group link
 *${config.prefix}revoke* - Reset group link
 
