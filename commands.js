@@ -9,6 +9,7 @@ const { handleEconomy } = require('./src/plugins/economy');
 const { handleAI } = require('./src/plugins/ai');
 const { handleMediaConvert } = require('./src/plugins/media');
 const { handleAdmin } = require('./src/plugins/admin');
+const { handleMusic } = require('./src/plugins/music');
 
 async function handleAntiLink(sock, msg, jid, text, sender) {
     if (!settings.antilink[jid]) return false; // Use Shared Settings
