@@ -8,7 +8,7 @@ const config = {
     botName: process.env.BOT_NAME || 'TITAN',
     prefix: process.env.PREFIX || '.',
     mode: process.env.MODE || 'private',
-    repoUrl: 'https://github.com/RestoTitan/TITAN-V.git',
+    repoUrl: 'https://github.com/tita-n/titan-whatsapp-bot.git',
     port: process.env.PORT ? parseInt(process.env.PORT.toString().trim()) : 3000,
     authPath: './auth_info',
     dataPath: './data',
