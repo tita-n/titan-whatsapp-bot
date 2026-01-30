@@ -21,6 +21,19 @@ Deploy your own powerful, 24/7 WhatsApp bot in just **60 seconds**! TITAN is des
 
 ---
 
+## 🛠️ Deployment Technical Settings
+
+If you are setting up the services manually (e.g., on Render or a VPS):
+
+### 1. TITAN Bot (Main Bot)
+- **Build Command:** `npm install`
+- **Start Command:** `npm start`
+
+### 2. TITAN GEN (Session Generator)
+- **Build Command:** `npm install`
+- **Start Command:** `npm run gen`
+- **Port:** Uses the `PORT` env variable (Default: `3000`)
+
 ### 🆘 Free Trial Ended?
 If Railway asks for a credit card, just switch to **Render** using the button above. TITAN works perfectly on Render's free tier. After linking, TITAN will PM you a **"Memory Key"**—add this to your Render settings to stay online 24/7!
 
