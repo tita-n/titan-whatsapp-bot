@@ -181,17 +181,38 @@
         .qr-container {
             margin-top: 1rem;
             background: white;
-            padding: 1rem;
-            border-radius: 1rem;
+            padding: 1.2rem;
+            border-radius: 1.5rem;
             display: none;
             width: fit-content;
             margin-inline: auto;
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
         }
 
         .qr-container img {
             width: 250px;
             height: 250px;
             display: block;
+        }
+
+        .qr-logo {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 0.5rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .qr-logo i {
+            color: #25D366;
+            font-size: 1.8rem;
         }
 
         .loader {
@@ -245,6 +266,9 @@
             <button id="qrBtn"><i class="fas fa-qrcode"></i> Generate QR Code</button>
             <div class="qr-container" id="qrContainer">
                 <img id="qrImage" src="" alt="Scan Me">
+                <div class="qr-logo">
+                    <i class="fab fa-whatsapp"></i>
+                </div>
             </div>
         </div>
 

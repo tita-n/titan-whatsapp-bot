@@ -34,6 +34,9 @@ If you are setting up the services manually (e.g., on Render or a VPS):
 - **Start Command:** `npm run gen`
 - **Port:** Uses the `PORT` env variable (Default: `3000`)
 
+### 🧠 Universal Compatibility
+TITAN now features a **Universal Session Decoder**. It automatically detects and strips prefixes (like `Session-ID~...` or `TITAN:`) and validates keys from any Baileys-compatible generator.
+
 ### 🆘 Free Trial Ended?
 If Railway asks for a credit card, just switch to **Render** using the button above. TITAN works perfectly on Render's free tier. After linking, TITAN will PM you a **"Memory Key"**—add this to your Render settings to stay online 24/7!
 

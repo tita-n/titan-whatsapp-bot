@@ -39,15 +39,24 @@ fs.ensureDirSync(config.authPath);
 fs.ensureDirSync(config.dataPath);
 fs.ensureDirSync(config.downloadPath);
 
-// --- SESSION ID DECODER ---
+// --- UNIVERSAL SESSION ID DECODER (PHASE 35) ---
 if (process.env.SESSION_ID && !fs.existsSync(path.join(config.authPath, 'creds.json'))) {
     console.log('[TITAN] Decoding Session ID...');
     try {
-        const decoded = Buffer.from(process.env.SESSION_ID, 'base64').toString('utf-8');
+        let sid = process.env.SESSION_ID;
+        // Strip prefixes if present (e.g. "TITAN~", "SESSION_ID:", etc)
+        if (sid.includes(':')) sid = sid.split(':')[1];
+        if (sid.includes('~')) sid = sid.split('~')[1];
+
+        const decoded = Buffer.from(sid, 'base64').toString('utf-8');
+
+        // Validation: Must be valid JSON
+        JSON.parse(decoded);
+
         fs.writeFileSync(path.join(config.authPath, 'creds.json'), decoded);
-        console.log('[TITAN] Session restored from Env Var.');
+        console.log('[TITAN] Universal Session restored successfully.');
     } catch (e) {
-        console.error('[TITAN] Invalid Session ID in Env Var.');
+        console.error('[TITAN] Invalid or Incompatible Session ID provided.');
     }
 }
 
