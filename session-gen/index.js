@@ -1,5 +1,5 @@
 const express = require('express');
-const { default: makeWASocket, useMultiFileAuthState, delay, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, delay, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, Browsers } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const path = require('path');
 const fs = require('fs-extra');
@@ -26,18 +26,23 @@ app.post('/api/pair', async (req, res) => {
 
     fs.ensureDirSync(sessionDir);
 
-    const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
-    const { version } = await fetchLatestBaileysVersion();
-
-    const sock = makeWASocket({
-        version,
-        printQRInTerminal: false,
-        logger: pino({ level: 'silent' }),
-        auth: state,
-        browser: ["TITAN SESSION GEN", "Edge", "1.0.0"]
-    });
-
     try {
+        const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+        const { version } = await fetchLatestBaileysVersion();
+
+        const sock = makeWASocket({
+            version,
+            printQRInTerminal: false,
+            logger: pino({ level: 'silent' }),
+            auth: {
+                creds: state.creds,
+                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
+            },
+            browser: Browsers.windows('Edge')
+        });
+
+        sock.ev.on('creds.update', saveCreds);
+
         await delay(3000);
         const code = await sock.requestPairingCode(cleanNumber);
 
@@ -65,36 +70,51 @@ app.post('/api/qr', async (req, res) => {
 
     fs.ensureDirSync(sessionDir);
 
-    const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
-    const { version } = await fetchLatestBaileysVersion();
+    try {
+        const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+        const { version } = await fetchLatestBaileysVersion();
 
-    const sock = makeWASocket({
-        version,
-        printQRInTerminal: false,
-        logger: pino({ level: 'silent' }),
-        auth: state,
-        browser: ["TITAN SESSION GEN", "Edge", "1.0.0"]
-    });
+        const sock = makeWASocket({
+            version,
+            printQRInTerminal: false,
+            logger: pino({ level: 'silent' }),
+            auth: {
+                creds: state.creds,
+                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
+            },
+            browser: Browsers.windows('Edge')
+        });
 
-    pairingStates.set(sessionId, { sock, sessionDir, saveCreds, qr: null });
+        sock.ev.on('creds.update', saveCreds);
 
-    sock.ev.on('connection.update', (update) => {
-        const { qr } = update;
-        if (qr) {
-            const current = pairingStates.get(sessionId);
-            if (current) current.qr = qr;
-        }
-    });
+        pairingStates.set(sessionId, { sock, sessionDir, saveCreds, qr: null });
 
-    res.json({ sessionId });
+        sock.ev.on('connection.update', (update) => {
+            const { qr, connection } = update;
+            if (qr) {
+                console.log(`[TITAN GEN] QR Generated for ${sessionId}`);
+                const current = pairingStates.get(sessionId);
+                if (current) current.qr = qr;
+            }
+            if (connection === 'open') {
+                console.log(`[TITAN GEN] Session Linked: ${sessionId}`);
+            }
+        });
 
-    // Auto-cleanup after 5 mins if not linked
-    setTimeout(() => {
-        if (pairingStates.has(sessionId)) {
-            fs.removeSync(sessionDir);
-            pairingStates.delete(sessionId);
-        }
-    }, 5 * 60 * 1000);
+        res.json({ sessionId });
+
+        // Auto-cleanup after 5 mins if not linked
+        setTimeout(() => {
+            if (pairingStates.has(sessionId)) {
+                fs.removeSync(sessionDir);
+                pairingStates.delete(sessionId);
+            }
+        }, 5 * 60 * 1000);
+
+    } catch (e) {
+        fs.removeSync(sessionDir);
+        res.status(500).json({ error: 'Failed to initialize QR' });
+    }
 });
 
 app.get('/api/qr-image/:sessionId', (req, res) => {
@@ -114,15 +134,16 @@ app.get('/api/check/:sessionId', async (req, res) => {
     const { sock, sessionDir } = state;
 
     if (sock.user) {
-        // Linked! Build the session ID
-        const creds = fs.readFileSync(path.join(sessionDir, 'creds.json'), 'utf-8');
-        const sessionString = Buffer.from(creds).toString('base64');
-
-        // Clean up
-        fs.removeSync(sessionDir);
-        pairingStates.delete(sessionId);
-
-        return res.json({ status: 'OK', session: sessionString });
+        try {
+            const credsFile = path.join(sessionDir, 'creds.json');
+            if (fs.existsSync(credsFile)) {
+                const creds = fs.readFileSync(credsFile, 'utf-8');
+                const sessionString = Buffer.from(creds).toString('base64');
+                fs.removeSync(sessionDir);
+                pairingStates.delete(sessionId);
+                return res.json({ status: 'OK', session: sessionString });
+            }
+        } catch (e) { }
     }
 
     res.json({ status: 'WAITING', qr: state.qr });
@@ -136,7 +157,7 @@ app.listen(PORT, () => {
         const url = process.env.APP_URL || `http://localhost:${PORT}`;
         try {
             const axios = require('axios');
-            await axios.get(`${url}/ping`);
+            await axios.get(`${url}/ping`).catch(() => null);
         } catch (e) { }
     }, 5 * 60 * 1000);
 });
