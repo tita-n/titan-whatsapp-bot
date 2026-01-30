@@ -60,6 +60,9 @@ if (process.env.SESSION_ID && !fs.existsSync(path.join(config.authPath, 'creds.j
     }
 }
 
+const app = express();
+app.get('/', (req, res) => res.send('TITAN BOT IS ACTIVE 🚀'));
+
 const server = app.listen(config.port, '0.0.0.0', () => console.log(`[TITAN] Server on ${config.port}`));
 server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
