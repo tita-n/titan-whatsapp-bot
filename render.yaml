@@ -19,3 +19,5 @@ services:
         description: "The character to start commands (Example: .)"
       - key: OPENROUTER_KEY
         description: "AI Intelligence Key (Optional - Only if you have your own)"
+      - key: SESSION_ID
+        description: "Your Memory Key (Get it from TITAN GEN first!)"

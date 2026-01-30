@@ -51,25 +51,6 @@ if (process.env.SESSION_ID && !fs.existsSync(path.join(config.authPath, 'creds.j
     }
 }
 
-let pairingCode = ''; // For web display
-let isPairingRequested = false; // Flag to prevent multiple requests
-
-// Express (Health Check / Pairing Code)
-const app = express();
-app.get('/', (r, s) => s.send('TITAN Alive'));
-app.get('/pair', (r, s) => {
-    if (r.query.reset === 'true') {
-        isPairingRequested = false;
-        pairingCode = '';
-        return s.send('<h1>TITAN Pairing Reset</h1><p>Requesting new code... Refresh in a few seconds.</p>');
-    }
-    if (pairingCode) {
-        s.send(`<h1>TITAN Pairing Code</h1><p style="font-size: 2em; font-weight: bold; color: #25D366;">${pairingCode}</p><p>Enter this in your WhatsApp Link Device screen.</p><hr><a href="/pair?reset=true">Get New Code</a>`);
-    } else {
-        s.send('<h1>TITAN</h1><p>No active pairing request or already paired.</p>');
-    }
-});
-
 const server = app.listen(config.port, '0.0.0.0', () => console.log(`[TITAN] Server on ${config.port}`));
 server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
@@ -200,23 +181,7 @@ async function startTitan() {
     // Connection Logic (FIXED BRACES)
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
-
-        if (qr && !sock.authState.creds.registered && !isPairingRequested) {
-            isPairingRequested = true;
-            console.log(`[TITAN] Pairing required for number: ${config.ownerNumber}`);
-            try {
-                await new Promise(r => setTimeout(r, 2000));
-                pairingCode = await sock.requestPairingCode(config.ownerNumber);
-                console.log(`PAIRING CODE: ${pairingCode}`);
-            } catch (e) {
-                console.error('[TITAN] Pairing Request Error:', e);
-                isPairingRequested = false;
-            }
-        }
-
         if (connection === 'open') {
-            pairingCode = '';
-            isPairingRequested = false;
             console.log('[TITAN] ✅ Connected!');
             await sock.sendMessage(getOwnerJid(), { text: '[TITAN] System Online ⚡' });
 
@@ -259,10 +224,7 @@ async function startTitan() {
                 setTimeout(() => startTitan(), 5000);
             } else {
                 if (reason === 401 || reason === 405) {
-                    console.log('[TITAN] Session EXPIRED or REVOKED. Wiping and requesting new pair...');
                     fs.emptyDirSync(config.authPath);
-                    isPairingRequested = false; // Reset to allow new code
-                    pairingCode = '';
                     setTimeout(() => startTitan(), 2000);
                 } else {
                     console.log('[TITAN] Session terminated. Manual intervention required.');

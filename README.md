@@ -4,19 +4,20 @@ Deploy your own powerful, 24/7 WhatsApp bot in just **60 seconds**! TITAN is des
 
 ---
 
-## 🚀 One-Click Deploy
+## 🚀 One-Click Deploy (Faster & Easier)
 
-Choose your platform. If your Railway trial has ended, use **Render** (100% Free, No Credit Card needed).
+1. **Step 1: Get Your Key**
+   Go to the [TITAN SESSION GEN](https://titan-gen.onrender.com) (Recommended) or use the internal pairing system.
+   *Wait for the code, link your WhatsApp, and copy the long **Memory Key**.*
 
-### Option A: Railway (Ultra Easy)
-Deploy using your unique template link.
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template/your-link-here)
+2. **Step 2: Deploy to Platform**
+   Choose your platform and paste the key into the **SESSION_ID** box.
 
-### Option B: Render (Survival Mode - No Credit Card)
-1. Click the button below. 100% Free & No Card needed.
-2. Enter your **Phone Number** in the form on Render.
-3. Wait for the pairing code in logs and link TITAN.
+### Option A: Render (100% Free - No Card)
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/tita-n/titan-whatsapp-bot)
+
+### Option B: Railway (Premium)
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template/xxx)
 
 ---
 
