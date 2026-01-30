@@ -82,7 +82,7 @@ async function startTitan() {
         },
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
-        browser: Browsers.macOS('safari'),
+        browser: ["TITAN", "Edge", "1.0.0"],
         markOnlineOnConnect: true,
         connectTimeoutMs: 60000,
         keepAliveIntervalMs: 20000,

@@ -34,7 +34,7 @@ app.post('/api/pair', async (req, res) => {
         printQRInTerminal: false,
         logger: pino({ level: 'silent' }),
         auth: state,
-        browser: ["TITAN SESSION GEN", "Safari", "1.0.0"]
+        browser: ["TITAN SESSION GEN", "Edge", "1.0.0"]
     });
 
     try {
@@ -73,7 +73,7 @@ app.post('/api/qr', async (req, res) => {
         printQRInTerminal: false,
         logger: pino({ level: 'silent' }),
         auth: state,
-        browser: ["TITAN SESSION GEN", "Safari", "1.0.0"]
+        browser: ["TITAN SESSION GEN", "Edge", "1.0.0"]
     });
 
     pairingStates.set(sessionId, { sock, sessionDir, saveCreds, qr: null });
@@ -101,7 +101,7 @@ app.get('/api/qr-image/:sessionId', (req, res) => {
     const state = pairingStates.get(req.params.sessionId);
     if (!state || !state.qr) return res.status(404).send('QR not available');
 
-    const code = qrImage.image(state.qr, { type: 'png' });
+    const code = qrImage.image(state.qr, { type: 'png', ec_level: 'H' });
     res.type('png');
     code.pipe(res);
 });
