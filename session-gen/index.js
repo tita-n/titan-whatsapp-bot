@@ -12,6 +12,7 @@ app.use(express.static('session-gen/public'));
 
 // Pairing Store (In-memory for security)
 const pairingStates = new Map();
+const qrImage = require('qr-image');
 
 app.get('/ping', (req, res) => res.send('OK'));
 
@@ -58,6 +59,53 @@ app.post('/api/pair', async (req, res) => {
     }
 });
 
+app.post('/api/qr', async (req, res) => {
+    const sessionId = `TITAN_QR_${Math.random().toString(36).substring(7)}`;
+    const sessionDir = path.join(__dirname, 'temp', sessionId);
+
+    fs.ensureDirSync(sessionDir);
+
+    const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+    const { version } = await fetchLatestBaileysVersion();
+
+    const sock = makeWASocket({
+        version,
+        printQRInTerminal: false,
+        logger: pino({ level: 'silent' }),
+        auth: state,
+        browser: ["TITAN SESSION GEN", "Safari", "1.0.0"]
+    });
+
+    pairingStates.set(sessionId, { sock, sessionDir, saveCreds, qr: null });
+
+    sock.ev.on('connection.update', (update) => {
+        const { qr } = update;
+        if (qr) {
+            const current = pairingStates.get(sessionId);
+            if (current) current.qr = qr;
+        }
+    });
+
+    res.json({ sessionId });
+
+    // Auto-cleanup after 5 mins if not linked
+    setTimeout(() => {
+        if (pairingStates.has(sessionId)) {
+            fs.removeSync(sessionDir);
+            pairingStates.delete(sessionId);
+        }
+    }, 5 * 60 * 1000);
+});
+
+app.get('/api/qr-image/:sessionId', (req, res) => {
+    const state = pairingStates.get(req.params.sessionId);
+    if (!state || !state.qr) return res.status(404).send('QR not available');
+
+    const code = qrImage.image(state.qr, { type: 'png' });
+    res.type('png');
+    code.pipe(res);
+});
+
 app.get('/api/check/:sessionId', async (req, res) => {
     const { sessionId } = req.params;
     const state = pairingStates.get(sessionId);
@@ -77,7 +125,7 @@ app.get('/api/check/:sessionId', async (req, res) => {
         return res.json({ status: 'OK', session: sessionString });
     }
 
-    res.json({ status: 'WAITING' });
+    res.json({ status: 'WAITING', qr: state.qr });
 });
 
 app.listen(PORT, () => {

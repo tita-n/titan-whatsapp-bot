@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -144,6 +145,55 @@
             display: inline-flex;
         }
 
+        .tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            background: #252525;
+            padding: 0.3rem;
+            border-radius: 0.8rem;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 0.8rem;
+            border-radius: 0.6rem;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: 0.3s;
+            color: #888;
+        }
+
+        .tab.active {
+            background: var(--primary);
+            color: black;
+        }
+
+        .method-content {
+            display: none;
+        }
+
+        .method-content.active {
+            display: block;
+        }
+
+        .qr-container {
+            margin-top: 1rem;
+            background: white;
+            padding: 1rem;
+            border-radius: 1rem;
+            display: none;
+            width: fit-content;
+            margin-inline: auto;
+        }
+
+        .qr-container img {
+            width: 250px;
+            height: 250px;
+            display: block;
+        }
+
         .loader {
             display: none;
             margin: 1rem auto;
@@ -156,8 +206,13 @@
         }
 
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
 
         .status-msg {
@@ -168,22 +223,36 @@
         }
     </style>
 </head>
+
 <body>
     <div class="container" id="main">
         <h1>TITAN GEN</h1>
-        <p>Enter your phone number with country code to generate your Memory Key.</p>
-        
-        <div class="input-group">
-            <input type="text" id="number" placeholder="e.g. 2348081234567" autocomplete="off">
+        <p>Choose your linking method to generate your Memory Key.</p>
+
+        <div class="tabs">
+            <div class="tab active" onclick="switchMethod('pair')">Pairing Code</div>
+            <div class="tab" onclick="switchMethod('qr')">QR Code</div>
         </div>
 
-        <button id="pairBtn"><i class="fas fa-link"></i> Get Pairing Code</button>
+        <div id="pairMethod" class="method-content active">
+            <div class="input-group">
+                <input type="text" id="number" placeholder="e.g. 2348081234567" autocomplete="off">
+            </div>
+            <button id="pairBtn"><i class="fas fa-link"></i> Get Pairing Code</button>
+        </div>
+
+        <div id="qrMethod" class="method-content">
+            <button id="qrBtn"><i class="fas fa-qrcode"></i> Generate QR Code</button>
+            <div class="qr-container" id="qrContainer">
+                <img id="qrImage" src="" alt="Scan Me">
+            </div>
+        </div>
 
         <div class="loader" id="loader"></div>
         <div class="status-msg" id="status">Connecting to WhatsApp...</div>
 
         <div class="pairing-code" id="code"></div>
-        
+
         <div class="result-box" id="resultBox">
             <p style="margin-bottom: 0.5rem; color: var(--primary)">✅ Memory Key Generated!</p>
             <div class="session-id" id="sessionData"></div>
@@ -193,14 +262,75 @@
 
     <script>
         const pairBtn = document.getElementById('pairBtn');
+        const qrBtn = document.getElementById('qrBtn');
         const numberInput = document.getElementById('number');
         const loader = document.getElementById('loader');
         const status = document.getElementById('status');
         const codeBox = document.getElementById('code');
         const resultBox = document.getElementById('resultBox');
         const sessionData = document.getElementById('sessionData');
+        const qrContainer = document.getElementById('qrContainer');
+        const qrImage = document.getElementById('qrImage');
 
         let interval;
+
+        function switchMethod(method) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.method-content').forEach(m => m.classList.remove('active'));
+
+            if (method === 'pair') {
+                document.querySelector('.tab:nth-child(1)').classList.add('active');
+                document.getElementById('pairMethod').classList.add('active');
+            } else {
+                document.querySelector('.tab:nth-child(2)').classList.add('active');
+                document.getElementById('qrMethod').classList.add('active');
+            }
+
+            // Reset UI
+            clearInterval(interval);
+            codeBox.style.display = 'none';
+            qrContainer.style.display = 'none';
+            status.style.display = 'none';
+            pairBtn.disabled = false;
+            qrBtn.disabled = false;
+        }
+
+        qrBtn.onclick = async () => {
+            qrBtn.disabled = true;
+            loader.style.display = 'block';
+            status.innerText = 'Initializing QR Engine...';
+            status.style.display = 'block';
+
+            try {
+                const res = await fetch('/api/qr', { method: 'POST' });
+                const data = await res.json();
+
+                loader.style.display = 'none';
+                status.innerText = 'Scan the QR code below with your WhatsApp:';
+
+                // Start polling
+                interval = setInterval(async () => {
+                    const checkRes = await fetch(`/api/check/${data.sessionId}`);
+                    const checkData = await checkRes.json();
+
+                    if (checkData.status === 'OK') {
+                        clearInterval(interval);
+                        qrContainer.style.display = 'none';
+                        status.style.display = 'none';
+                        sessionData.innerText = checkData.session;
+                        resultBox.style.display = 'block';
+                    } else if (checkData.qr) {
+                        qrImage.src = `/api/qr-image/${data.sessionId}?t=${Date.now()}`;
+                        qrContainer.style.display = 'block';
+                    }
+                }, 3000);
+
+            } catch (e) {
+                alert('QR Failed: ' + e.message);
+                qrBtn.disabled = false;
+                loader.style.display = 'none';
+            }
+        };
 
         pairBtn.onclick = async () => {
             const number = numberInput.value.replace(/[^0-9]/g, '');
@@ -209,6 +339,7 @@
             pairBtn.disabled = true;
             loader.style.display = 'block';
             status.style.display = 'block';
+            status.innerText = 'Connecting to WhatsApp...';
 
             try {
                 const res = await fetch('/api/pair', {
@@ -216,7 +347,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ number })
                 });
-                
+
                 const data = await res.json();
                 if (data.error) throw new Error(data.error);
 
@@ -253,4 +384,5 @@
         }
     </script>
 </body>
+
 </html>
