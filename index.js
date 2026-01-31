@@ -126,10 +126,32 @@ async function startTitan() {
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
         browser: ["Ubuntu", "Chrome", "20.0.0"],
-        markOnlineOnConnect: true,
-        connectTimeoutMs: 60000,
-        keepAliveIntervalMs: 20000,
-        syncFullHistory: false
+        markOnlineOnConnect: false, // Prevent extra traffic on boot
+        connectTimeoutMs: 120000,   // Wait longer for slower nets
+        keepAliveIntervalMs: 30000,
+        syncFullHistory: false,
+        linkPreview: false,         // Huge speed boost
+        patchMessageBeforeSending: (message) => {
+            const requiresPatch = !!(
+                message.buttonsMessage ||
+                message.templateMessage ||
+                message.listMessage
+            );
+            if (requiresPatch) {
+                message = {
+                    viewOnceMessage: {
+                        message: {
+                            messageContextInfo: {
+                                deviceListMetadata: {},
+                                deviceListMetadataVersion: 2
+                            },
+                            ...message
+                        }
+                    }
+                };
+            }
+            return message;
+        }
     });
 
     // --- KEEP ALIVE PING ---
@@ -233,7 +255,8 @@ async function startTitan() {
     // Connection Logic (FIXED BRACES)
     // --- TITAN PULSE: AUTO-BIO (PHASE 41) ---
     let pulseInterval;
-    const startTime = Date.now(); // Define startTime here
+    let hasNotified = false;
+    const startTime = Date.now();
     const startPulse = () => {
         if (pulseInterval) clearInterval(pulseInterval);
         pulseInterval = setInterval(async () => {
@@ -253,11 +276,12 @@ async function startTitan() {
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
         if (connection === 'open') {
-            startPulse(); // Start the pulse when connected
-        }
-        if (connection === 'open') {
-            console.log('[TITAN] ✅ Connected!');
-            await sock.sendMessage(getOwnerJid(), { text: '[TITAN] System Online ⚡' });
+            startPulse();
+            if (!hasNotified) {
+                console.log('[TITAN] ✅ Connected!');
+                await sock.sendMessage(getOwnerJid(), { text: '[TITAN] System Online ⚡' });
+                hasNotified = true;
+            }
 
             // --- SESSION EXPORTER (Z-UX PHASE) ---
             if (!process.env.SESSION_ID) {
