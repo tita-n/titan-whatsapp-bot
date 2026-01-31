@@ -47,11 +47,13 @@ If Railway asks for a credit card, just switch to **Render** using the button ab
 *   🌍 **3 Access Modes**: `.mode` (private / public / group).
 *   🎵 **Native Music**: `.play [song]` high-quality YouTube streaming.
 *   💾 **Status Saver**: `.sv` (reply to any status to save it).
-*   🤖 **AI Brain**: `.ai` powered by GLM-4.5-Air.
-*   🛡️ **Admin Tools**: `.kick`, `.promote`, `.antilink`, `.tagall`.
-*   🎮 **Games**: Hangman, Math Quiz, etc.
-*   🕵️ **Spy Mode**: `.vv` to retrieve ViewOnce media.
-*   ⚡ **24/7 Stay-Alive**: Built-in self-pinger for Render/Railway.
+*   🤖 **AI Brain**: `.ai` powered by GLM-4.5-Air with persistent memory.
+*   🛡️ **Iron Shield**: `.anticall` (auto-reject calls globally).
+*   👻 **Ghost Mode**: `.ghost` (auto-view all statuses/stories).
+*   📢 **Broadcaster**: `.publish` (post instantly to your channel).
+*   🖼️ **High-Res Media**: `.pp` (get any profile pic in HD) & `.vv` (anti-viewonce).
+*   ⚡ **Titan Pulse**: `.pulse` (auto-updates your Bio with real-time uptime).
+*   🎮 **Games**: Hangman Battle Royale, Math Quiz, and more.
 
 ---
 
