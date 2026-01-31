@@ -70,14 +70,26 @@ async function handleCommand(sock, msg, jid, sender, cmd, args, text, owner) {
     };
 
     const sendWithLogo = async (text, mentions = []) => {
-        const caption = `*「 ${config.botName} 」*\n\n${text}`;
+        const startTime = Date.now();
+        const header = `╭━━━━━━━━━━━━━━╮\n      🛡️  *T I T A N*\n╰━━━━━━━━━━━━━━╯`;
+        const footer = `\n\n⚡ *Speed:* ${((Date.now() - startTime) / 1000).toFixed(2)}s\n🛡️ *Elite Edition*`;
+        const caption = `${header}\n\n${text}${footer}`;
+
         const contextInfo = {
             forwardingScore: 999,
             isForwarded: true,
             forwardedNewsletterMessageInfo: {
-                newsletterJid: '120363402818387361@newsletter', // Updated JID
-                newsletterName: 'TITAN MODS V',
+                newsletterJid: config.supportChannel,
+                newsletterName: 'TITAN ELITE',
                 serverMessageId: 1
+            },
+            externalAdReply: {
+                title: '🛡️ TITAN | OFFICIAL',
+                body: 'The Elite Multitasking Engine ⚡',
+                thumbnail: fs.existsSync(config.logoPath) ? fs.readFileSync(config.logoPath) : null,
+                sourceUrl: `https://whatsapp.com/channel/${config.supportChannel.split('@')[0]}`,
+                mediaType: 1,
+                renderLargerThumbnail: false
             }
         };
 
@@ -91,7 +103,7 @@ async function handleCommand(sock, msg, jid, sender, cmd, args, text, owner) {
     switch (cmd) {
         case 'menu':
         case 'help':
-            const menuText = `*🤖 TITAN BOT COMMANDS*
+            const menuText = `*🤖 COMMAND CENTER*
 Prefix: *${config.prefix}*
 
 *🛠️ Utility*

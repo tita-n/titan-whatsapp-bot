@@ -442,7 +442,28 @@ async function startTitan() {
 
                 const args = text.slice(config.prefix.length).trim().split(/\s+/);
                 const cmd = args.shift().toLowerCase();
-                await handleCommand(sock, msg, jid, sender, cmd, args, text, owner);
+
+                // --- PHASE 42: MICRO-UX ANIMATIONS ---
+                try {
+                    // 1. Initial Processing React
+                    await sock.sendMessage(jid, { react: { text: '⏳', key: msg.key } });
+
+                    // 2. Simulated Presence (Elite Feel)
+                    await sock.presenceSubscribe(jid);
+                    await sock.sendPresenceUpdate('composing', jid);
+                    await new Promise(r => setTimeout(r, 800)); // Tactical delay for realism
+
+                    // 3. Execute
+                    await handleCommand(sock, msg, jid, sender, cmd, args, text, owner);
+
+                    // 4. Success React
+                    await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
+                    await sock.sendPresenceUpdate('paused', jid);
+
+                } catch (cmdErr) {
+                    console.error('[TITAN COMMAND ERR]', cmdErr);
+                    await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
+                }
 
             } catch (e) {
                 console.error('[TITAN] Handler Error:', e);
