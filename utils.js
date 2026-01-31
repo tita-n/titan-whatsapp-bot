@@ -134,6 +134,7 @@ const isOwner = (jid) => {
 };
 
 const isGroup = (jid) => jid?.endsWith('@g.us');
+const isChannel = (jid) => jid?.endsWith('@newsletter');
 
 const getMessageText = (msg) => {
     const m = msg.message;
@@ -148,6 +149,7 @@ const getMessageText = (msg) => {
         content.documentMessage?.caption ||
         content.buttonsResponseMessage?.selectedButtonId ||
         content.listResponseMessage?.singleSelectReply?.selectedRowId ||
+        content.newsletterAction?.text || // Handle some channel specific actions if needed
         '';
 };
 
@@ -183,6 +185,7 @@ module.exports = {
     getOwnerJid,
     isOwner,
     isGroup,
+    isChannel,
     getMessageText,
     getGroupAdmins,
     getCachedGroupMetadata

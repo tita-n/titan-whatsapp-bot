@@ -2,7 +2,7 @@ const { downloadContentFromMessage, downloadMediaMessage } = require('@whiskeyso
 const axios = require('axios');
 const fs = require('fs-extra');
 const moment = require('moment');
-const { config, settings, saveSettings, getOwnerJid, isGroup, getGroupAdmins, spamTracker, gameStore, getCachedGroupMetadata } = require('./utils');
+const { config, settings, saveSettings, getOwnerJid, isGroup, isChannel, getGroupAdmins, spamTracker, gameStore, getCachedGroupMetadata } = require('./utils');
 
 // Plugins
 const { handleEconomy } = require('./src/plugins/economy');
@@ -50,14 +50,18 @@ async function handleAntiLink(sock, msg, jid, text, sender) {
 async function handleCommand(sock, msg, jid, sender, cmd, args, text, owner, cmdStart = Date.now()) {
     const isGroupChat = isGroup(jid);
 
-    const sendWithLogo = async (text, mentions = []) => {
+    const sendWithLogo = async (text, mentions = [], lite = false) => {
         const header = `╭━━━━━━━━━━━━━━╮\n      🛡️  *T I T A N*\n╰━━━━━━━━━━━━━━╯`;
         const duration = (Date.now() - cmdStart) / 1000;
         const latencyStr = duration < 0.1 ? '0.0000009ms [QUANTUM]' : `${duration.toFixed(4)}s`;
         const footer = `\n\n⚡ *Latency:* ${latencyStr}\n🛡️ *Elite Edition*`;
         const caption = `${header}\n\n${text}${footer}`;
 
-        const contextInfo = {
+        // Turbo-Duct Optimization: Skip thumbnail for newsletters or when 'lite' is requested
+        const isChan = isChannel(jid);
+        const useAdReply = !isChan; // Channels often glitch with adReply thumbnails
+
+        const contextInfo = useAdReply ? {
             forwardingScore: 999,
             isForwarded: true,
             forwardedNewsletterMessageInfo: {
@@ -67,18 +71,20 @@ async function handleCommand(sock, msg, jid, sender, cmd, args, text, owner, cmd
             },
             externalAdReply: {
                 title: '🛡️ TITAN | OFFICIAL',
-                body: 'Quantum Speed Overclocked ⚡',
+                body: 'Turbo-Duct Speed 🏎️',
                 thumbnail: config.logoBuffer,
                 sourceUrl: `https://whatsapp.com/channel/${config.supportChannel.split('@')[0]}`,
                 mediaType: 1,
                 renderLargerThumbnail: false
             }
-        };
+        } : {};
 
-        if (config.logoBuffer) {
-            await sock.sendMessage(jid, { image: config.logoBuffer, caption, mentions, contextInfo });
-        } else {
+        // ATOMIC SPEED PATH: If 'lite' or in Channel, send pure text. No image binary upload.
+        if (lite || isChan || !config.logoBuffer) {
             await sock.sendMessage(jid, { text: caption, mentions, contextInfo });
+        } else {
+            // PREMIUM PATH: Includes image binary upload (Slower)
+            await sock.sendMessage(jid, { image: config.logoBuffer, caption, mentions, contextInfo });
         }
     };
 

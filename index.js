@@ -11,7 +11,7 @@ const pino = require('pino');
 const path = require('path');
 
 // Modules
-const { config, isOwner, isGroup, getMessageText, getOwnerJid, settings, saveSettings, msgStore, spamTracker, gameStore, getCachedGroupMetadata } = require('./utils');
+const { config, isOwner, isGroup, isChannel, getMessageText, getOwnerJid, settings, saveSettings, msgStore, spamTracker, gameStore, getCachedGroupMetadata } = require('./utils');
 const cron = require('node-cron');
 
 // --- DYNAMIC COMMAND LOADER (PHASE 17) ---
@@ -413,16 +413,19 @@ async function startTitan() {
                 const mode = settings.mode || 'private';
                 const owner = isOwner(sender);
                 const isGroupChat = isGroup(jid);
+                const isChannelChat = isChannel(jid);
 
                 // Logic: 
                 // 1. Owner ALWAYS allowed.
                 // 2. Private: Only owner allowed.
                 // 3. Group: Allowed if in group. (In PM, only owner).
-                // 4. Public: Allowed everywhere.
+                // 4. Channel: Allowed if in channel (Owner / Public).
+                // 5. Public: Allowed everywhere.
                 let allowed = owner;
                 if (!allowed) {
                     if (mode === 'public') allowed = true;
                     else if (mode === 'group' && isGroupChat) allowed = true;
+                    else if (mode === 'public' && isChannelChat) allowed = true; // Channels usually public anyway
                 }
 
                 if (!allowed) continue;
