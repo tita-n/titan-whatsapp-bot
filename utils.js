@@ -14,6 +14,7 @@ const config = {
     dataPath: './data',
     downloadPath: './downloads',
     logoPath: './titan_logo.png',
+    logoBuffer: fs.existsSync('./titan_logo.png') ? fs.readFileSync('./titan_logo.png') : null,
     supportGroup: 'GrrmfoKyFyC24okI6bzBWe',
     supportChannel: '120363402818387361@newsletter'
 };

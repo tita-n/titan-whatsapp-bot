@@ -443,26 +443,24 @@ async function startTitan() {
                 const args = text.slice(config.prefix.length).trim().split(/\s+/);
                 const cmd = args.shift().toLowerCase();
 
-                // --- PHASE 42: MICRO-UX ANIMATIONS ---
+                const cmdStart = Date.now();
+
+                // --- PHASE 43: LIGHTNING OPTIMIZATION ---
                 try {
-                    // 1. Initial Processing React
-                    await sock.sendMessage(jid, { react: { text: '⏳', key: msg.key } });
+                    // 1. Non-blocking Micro-UX
+                    sock.sendMessage(jid, { react: { text: '⏳', key: msg.key } }).catch(e => console.error('[TITAN REACT ERR]', e));
+                    sock.sendPresenceUpdate('composing', jid).catch(e => console.error('[TITAN PRESENCE ERR]', e));
 
-                    // 2. Simulated Presence (Elite Feel)
-                    await sock.presenceSubscribe(jid);
-                    await sock.sendPresenceUpdate('composing', jid);
-                    await new Promise(r => setTimeout(r, 800)); // Tactical delay for realism
+                    // 2. Immediate Execution (Passing cmdStart)
+                    await handleCommand(sock, msg, jid, sender, cmd, args, text, owner, cmdStart);
 
-                    // 3. Execute
-                    await handleCommand(sock, msg, jid, sender, cmd, args, text, owner);
-
-                    // 4. Success React
-                    await sock.sendMessage(jid, { react: { text: '✅', key: msg.key } });
-                    await sock.sendPresenceUpdate('paused', jid);
+                    // 3. Success React (Non-blocking)
+                    sock.sendMessage(jid, { react: { text: '✅', key: msg.key } }).catch(e => console.error('[TITAN REACT ERR]', e));
+                    sock.sendPresenceUpdate('paused', jid).catch(e => console.error('[TITAN PRESENCE ERR]', e));
 
                 } catch (cmdErr) {
-                    console.error('[TITAN COMMAND ERR]', cmdErr);
-                    await sock.sendMessage(jid, { react: { text: '❌', key: msg.key } });
+                    console.error('[TITAN L-SPEED ERR]', cmdErr);
+                    sock.sendMessage(jid, { react: { text: '❌', key: msg.key } }).catch(() => { });
                 }
 
             } catch (e) {
