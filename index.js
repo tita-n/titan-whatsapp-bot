@@ -39,31 +39,64 @@ fs.ensureDirSync(config.authPath);
 fs.ensureDirSync(config.dataPath);
 fs.ensureDirSync(config.downloadPath);
 
-// --- UNIVERSAL SESSION ID DECODER (PHASE 37) ---
-if (process.env.SESSION_ID && !fs.existsSync(path.join(config.authPath, 'creds.json'))) {
-    console.log('[TITAN] Decoding Session ID...');
-    try {
-        let sid = process.env.SESSION_ID.trim();
-        let decoded;
+// --- UNIVERSAL SESSION ID DECODER (PHASE 38) ---
+if (process.env.SESSION_ID) {
+    const credsPath = path.join(config.authPath, 'creds.json');
+    let shouldDecode = false;
 
-        if (sid.startsWith('{')) {
-            // Raw JSON Session Support
-            decoded = sid;
-            console.log('[TITAN] Raw JSON Session detected.');
-        } else {
-            // Base64 Encoded (TITAN standard or prefixed)
-            if (sid.includes(':')) sid = sid.split(':')[1];
-            if (sid.includes('~')) sid = sid.split('~')[1];
-            decoded = Buffer.from(sid, 'base64').toString('utf-8');
+    if (!fs.existsSync(credsPath)) {
+        shouldDecode = true;
+    } else {
+        // Check if the current SESSION_ID is different from what we have
+        try {
+            const currentCreds = fs.readFileSync(credsPath, 'utf-8');
+            const sid = process.env.SESSION_ID.trim();
+            let decoded;
+            if (sid.startsWith('{')) {
+                decoded = sid;
+            } else {
+                let cleanSid = sid;
+                if (cleanSid.includes(':')) cleanSid = cleanSid.split(':')[1];
+                if (cleanSid.includes('~')) cleanSid = cleanSid.split('~')[1];
+                decoded = Buffer.from(cleanSid, 'base64').toString('utf-8');
+            }
+
+            // If the JSON content doesn't match exactly, we must re-decode
+            if (currentCreds !== decoded) {
+                console.log('[TITAN] SESSION_ID change detected. Wiping auth folder...');
+                shouldDecode = true;
+            }
+        } catch (e) {
+            shouldDecode = true;
         }
+    }
 
-        // Validation: Must be valid JSON
-        JSON.parse(decoded);
+    if (shouldDecode) {
+        console.log('[TITAN] Initializing Universal Session...');
+        try {
+            let sid = process.env.SESSION_ID.trim();
+            let decoded;
 
-        fs.writeFileSync(path.join(config.authPath, 'creds.json'), decoded);
-        console.log('[TITAN] Universal Session restored successfully.');
-    } catch (e) {
-        console.error('[TITAN] Invalid or Incompatible Session ID provided.');
+            if (sid.startsWith('{')) {
+                decoded = sid;
+            } else {
+                if (sid.includes(':')) sid = sid.split(':')[1];
+                if (sid.includes('~')) sid = sid.split('~')[1];
+                decoded = Buffer.from(sid, 'base64').toString('utf-8');
+            }
+
+            // Validation
+            JSON.parse(decoded);
+
+            // Clean slate: Wipe the entire auth folder including keys/ sessions
+            fs.removeSync(config.authPath);
+            fs.ensureDirSync(config.authPath);
+
+            fs.writeFileSync(credsPath, decoded);
+            console.log('[TITAN] Session restored successfully with a clean slate.');
+        } catch (e) {
+            console.error('[TITAN] Failed to decode Session ID. Check format.');
+        }
     }
 }
 
