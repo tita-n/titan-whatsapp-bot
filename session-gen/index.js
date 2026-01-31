@@ -47,7 +47,7 @@ app.post('/api/pair', async (req, res) => {
                 creds: state.creds,
                 keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
             },
-            browser: ["Chrome (Linux)", "Chrome", "1.0.0"]
+            browser: ["Ubuntu", "Chrome", "20.0.0"]
         });
 
         sock.ev.on('creds.update', saveCreds);
@@ -96,7 +96,7 @@ app.post('/api/qr', async (req, res) => {
                 creds: state.creds,
                 keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
             },
-            browser: ["TITAN SESSION GEN", "Edge", "1.0.0"]
+            browser: ["Ubuntu", "Chrome", "20.0.0"]
         });
 
         sock.ev.on('creds.update', saveCreds);

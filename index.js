@@ -39,16 +39,23 @@ fs.ensureDirSync(config.authPath);
 fs.ensureDirSync(config.dataPath);
 fs.ensureDirSync(config.downloadPath);
 
-// --- UNIVERSAL SESSION ID DECODER (PHASE 35) ---
+// --- UNIVERSAL SESSION ID DECODER (PHASE 37) ---
 if (process.env.SESSION_ID && !fs.existsSync(path.join(config.authPath, 'creds.json'))) {
     console.log('[TITAN] Decoding Session ID...');
     try {
-        let sid = process.env.SESSION_ID;
-        // Strip prefixes if present (e.g. "TITAN~", "SESSION_ID:", etc)
-        if (sid.includes(':')) sid = sid.split(':')[1];
-        if (sid.includes('~')) sid = sid.split('~')[1];
+        let sid = process.env.SESSION_ID.trim();
+        let decoded;
 
-        const decoded = Buffer.from(sid, 'base64').toString('utf-8');
+        if (sid.startsWith('{')) {
+            // Raw JSON Session Support
+            decoded = sid;
+            console.log('[TITAN] Raw JSON Session detected.');
+        } else {
+            // Base64 Encoded (TITAN standard or prefixed)
+            if (sid.includes(':')) sid = sid.split(':')[1];
+            if (sid.includes('~')) sid = sid.split('~')[1];
+            decoded = Buffer.from(sid, 'base64').toString('utf-8');
+        }
 
         // Validation: Must be valid JSON
         JSON.parse(decoded);
@@ -85,7 +92,7 @@ async function startTitan() {
         },
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
-        browser: ["TITAN", "Edge", "1.0.0"],
+        browser: ["Ubuntu", "Chrome", "20.0.0"],
         markOnlineOnConnect: true,
         connectTimeoutMs: 60000,
         keepAliveIntervalMs: 20000,
