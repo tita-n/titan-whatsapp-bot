@@ -102,6 +102,7 @@ Prefix: *${config.prefix}*
 *${config.prefix}vv2* - Silent Owner VV
 *${config.prefix}titan* - About the dev 🔥
 *${config.prefix}jid* - Get Chat JID
+*${config.prefix}pp* - Get Profile Pic
 *${config.prefix}link* - Get group link
 *${config.prefix}revoke* - Reset group link
 
@@ -740,14 +741,44 @@ _“Building the future, one line of code at a time.”_
             break;
 
         case 'jid':
-            let targetJid = jid;
-            const newsletter = msg.message?.extendedTextMessage?.contextInfo?.forwardedNewsletterMessageInfo?.newsletterJid;
-            if (newsletter) {
-                targetJid += `\n*Newsletter JID:* ${newsletter}`;
-            } else if (quotedSender) {
-                targetJid += `\n*Quoted JID:* ${quotedSender}`;
+            let currentJid = jid;
+            const newsletterJid = msg.message?.extendedTextMessage?.contextInfo?.forwardedNewsletterMessageInfo?.newsletterJid;
+            const quotedParticipant = msg.message?.extendedTextMessage?.contextInfo?.participant;
+
+            let jidText = `📍 *CURRENT CHAT:* ${currentJid}`;
+            if (newsletterJid) jidText += `\n📢 *CHANNEL:* ${newsletterJid}`;
+            if (quotedParticipant) jidText += `\n👤 *QUOTED USER:* ${quotedParticipant}`;
+            if (sender !== jid) jidText += `\n👤 *SENDER:* ${sender}`;
+
+            await sendWithLogo(jidText);
+            break;
+
+        case 'pp':
+        case 'profile':
+            try {
+                let target;
+                if (isGroup(jid)) {
+                    // Group logic: reply -> user, no reply -> group
+                    target = quotedSender || jid;
+                } else {
+                    // DM logic: just the other person
+                    target = jid;
+                }
+
+                const ppUrl = await sock.profilePictureUrl(target, 'image').catch(() => null);
+                if (!ppUrl) return sendWithLogo('❌ Profile Picture is private or not set.');
+
+                const imgRes = await axios.get(ppUrl, { responseType: 'arraybuffer' });
+                await sock.sendMessage(jid, {
+                    image: Buffer.from(imgRes.data),
+                    caption: `🖼️ *Profile Picture Retrieval*\nTarget: @${target.split('@')[0]}`,
+                    mentions: [target]
+                }, { quoted: msg });
+
+            } catch (e) {
+                console.error('[TITAN] PP Error:', e);
+                await sendWithLogo('❌ Failed to retrieve Profile Picture.');
             }
-            await sendWithLogo(`📍 *JID DETECTED*\n\n${targetJid}`);
             break;
 
         default:
