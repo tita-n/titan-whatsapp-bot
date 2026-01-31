@@ -349,6 +349,11 @@
                     } else if (checkData.qr) {
                         qrImage.src = `/api/qr-image/${data.sessionId}?t=${Date.now()}`;
                         qrContainer.style.display = 'block';
+                    } else if (checkData.error) {
+                        clearInterval(interval);
+                        alert('Link Failed: ' + checkData.error);
+                        qrBtn.disabled = false;
+                        loader.style.display = 'none';
                     }
                 }, 3000);
 
@@ -394,6 +399,12 @@
                         status.style.display = 'none';
                         sessionData.innerText = checkData.session;
                         resultBox.style.display = 'block';
+                    } else if (checkData.error) {
+                        clearInterval(interval);
+                        alert('Link Failed: ' + checkData.error);
+                        pairBtn.disabled = false;
+                        loader.style.display = 'none';
+                        status.style.display = 'none';
                     }
                 }, 3000);
 

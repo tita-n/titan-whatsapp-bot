@@ -1,5 +1,5 @@
 const express = require('express');
-const { default: makeWASocket, useMultiFileAuthState, delay, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, Browsers } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, delay, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, Browsers, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const path = require('path');
 const fs = require('fs-extra');
@@ -16,6 +16,15 @@ const qrImage = require('qr-image');
 
 app.get('/ping', (req, res) => res.send('OK'));
 
+async function getVersion() {
+    try {
+        const { version } = await fetchLatestBaileysVersion();
+        return version;
+    } catch {
+        return [2, 3000, 1015901307]; // Fallback
+    }
+}
+
 app.post('/api/pair', async (req, res) => {
     const { number } = req.body;
     if (!number) return res.status(400).json({ error: 'Number required' });
@@ -28,7 +37,7 @@ app.post('/api/pair', async (req, res) => {
 
     try {
         const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
-        const { version } = await fetchLatestBaileysVersion();
+        const version = await getVersion();
 
         const sock = makeWASocket({
             version,
@@ -38,7 +47,7 @@ app.post('/api/pair', async (req, res) => {
                 creds: state.creds,
                 keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
             },
-            browser: Browsers.windows('Edge')
+            browser: ["Chrome (Linux)", "Chrome", "1.0.0"]
         });
 
         sock.ev.on('creds.update', saveCreds);
@@ -46,19 +55,24 @@ app.post('/api/pair', async (req, res) => {
         await delay(3000);
         const code = await sock.requestPairingCode(cleanNumber);
 
-        pairingStates.set(sessionId, { sock, sessionDir, saveCreds });
+        pairingStates.set(sessionId, { sock, sessionDir, saveCreds, lastUpdate: Date.now() });
 
         res.json({ sessionId, code });
 
         // Auto-cleanup after 5 mins if not linked
         setTimeout(() => {
             if (pairingStates.has(sessionId)) {
+                try {
+                    pairingStates.get(sessionId).sock.ev.removeAllListeners();
+                    pairingStates.get(sessionId).sock.logout();
+                } catch (e) { }
                 fs.removeSync(sessionDir);
                 pairingStates.delete(sessionId);
             }
         }, 5 * 60 * 1000);
 
     } catch (e) {
+        console.error(`[TITAN GEN] Pairing Error for ${cleanNumber}:`, e);
         fs.removeSync(sessionDir);
         res.status(500).json({ error: 'Failed to request code' });
     }
@@ -72,7 +86,7 @@ app.post('/api/qr', async (req, res) => {
 
     try {
         const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
-        const { version } = await fetchLatestBaileysVersion();
+        const version = await getVersion();
 
         const sock = makeWASocket({
             version,
@@ -82,36 +96,51 @@ app.post('/api/qr', async (req, res) => {
                 creds: state.creds,
                 keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
             },
-            browser: Browsers.windows('Edge')
+            browser: ["TITAN SESSION GEN", "Edge", "1.0.0"]
         });
 
         sock.ev.on('creds.update', saveCreds);
 
-        pairingStates.set(sessionId, { sock, sessionDir, saveCreds, qr: null });
+        pairingStates.set(sessionId, { sock, sessionDir, saveCreds, qr: null, lastUpdate: Date.now() });
 
         sock.ev.on('connection.update', (update) => {
-            const { qr, connection } = update;
+            const { qr, connection, lastDisconnect } = update;
+            const current = pairingStates.get(sessionId);
+            if (!current) return;
+
             if (qr) {
-                console.log(`[TITAN GEN] QR Generated for ${sessionId}`);
-                const current = pairingStates.get(sessionId);
-                if (current) current.qr = qr;
+                console.log(`[TITAN GEN] QR Generated: ${sessionId}`);
+                current.qr = qr;
+                current.lastUpdate = Date.now();
             }
             if (connection === 'open') {
                 console.log(`[TITAN GEN] Session Linked: ${sessionId}`);
+            }
+            if (connection === 'close') {
+                const reason = lastDisconnect?.error?.output?.statusCode;
+                console.log(`[TITAN GEN] Socket Closed: ${sessionId} (Reason: ${reason})`);
+                if (reason !== DisconnectReason.loggedOut) {
+                    // Attempt to handle specific failures if needed
+                }
             }
         });
 
         res.json({ sessionId });
 
-        // Auto-cleanup after 5 mins if not linked
+        // Auto-cleanup after 5 mins
         setTimeout(() => {
             if (pairingStates.has(sessionId)) {
+                try {
+                    pairingStates.get(sessionId).sock.ev.removeAllListeners();
+                    pairingStates.get(sessionId).sock.logout();
+                } catch (e) { }
                 fs.removeSync(sessionDir);
                 pairingStates.delete(sessionId);
             }
         }, 5 * 60 * 1000);
 
     } catch (e) {
+        console.error(`[TITAN GEN] QR Init Error:`, e);
         fs.removeSync(sessionDir);
         res.status(500).json({ error: 'Failed to initialize QR' });
     }
@@ -139,8 +168,12 @@ app.get('/api/check/:sessionId', async (req, res) => {
             if (fs.existsSync(credsFile)) {
                 const creds = fs.readFileSync(credsFile, 'utf-8');
                 const sessionString = Buffer.from(creds).toString('base64');
+
+                // Final cleanup
+                try { sock.ev.removeAllListeners(); sock.logout(); } catch (e) { }
                 fs.removeSync(sessionDir);
                 pairingStates.delete(sessionId);
+
                 return res.json({ status: 'OK', session: sessionString });
             }
         } catch (e) { }
