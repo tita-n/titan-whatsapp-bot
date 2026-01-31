@@ -33,7 +33,9 @@ let settings = {
     ownerJid: '',       // Dynamic Owner (for templates)
     reminders: [],       // Array of { id, jid, text, time }
     todo: {},             // jid: [tasks]
-    anticall: false       // Global Anti-Call Toggle
+    anticall: false,      // Global Anti-Call Toggle
+    ghost: false,         // Auto-Status View
+    pulse: false          // Auto-Bio Update
 };
 
 // Application Stores

@@ -231,8 +231,30 @@ async function startTitan() {
     });
 
     // Connection Logic (FIXED BRACES)
+    // --- TITAN PULSE: AUTO-BIO (PHASE 41) ---
+    let pulseInterval;
+    const startTime = Date.now(); // Define startTime here
+    const startPulse = () => {
+        if (pulseInterval) clearInterval(pulseInterval);
+        pulseInterval = setInterval(async () => {
+            if (settings.pulse && sock.user) {
+                const uptime = moment.duration(Date.now() - startTime).humanize();
+                const status = `TITAN AI Active 🛡️ | Uptime: ${uptime} | Prefix: ${config.prefix}`;
+                try {
+                    await sock.updateProfileStatus(status);
+                    console.log(`[TITAN PULSE] Bio Updated: ${status}`);
+                } catch (e) {
+                    console.error('[TITAN PULSE] Failed to update bio:', e);
+                }
+            }
+        }, 60 * 60 * 1000); // Every 1 hour
+    };
+
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
+        if (connection === 'open') {
+            startPulse(); // Start the pulse when connected
+        }
         if (connection === 'open') {
             console.log('[TITAN] ✅ Connected!');
             await sock.sendMessage(getOwnerJid(), { text: '[TITAN] System Online ⚡' });
@@ -314,9 +336,16 @@ async function startTitan() {
 
         for (const msg of messages) {
             try {
+                // --- GHOST MODE: AUTO-STATUS VIEW (PHASE 41) ---
+                const jid = msg.key.remoteJid;
+                if (jid === 'status@broadcast' && settings.ghost) {
+                    await sock.readMessages([msg.key]);
+                    console.log(`[TITAN GHOST] Status viewed from: ${msg.pushName || 'Someone'}`);
+                    continue; // Skip further processing for status messages
+                }
+
                 if (!msg.message) continue;
 
-                const jid = msg.key.remoteJid;
                 const fromMe = msg.key.fromMe;
                 const sender = fromMe ? (sock.user.id.split(':')[0] + '@s.whatsapp.net') : (msg.key.participant || jid);
                 const text = getMessageText(msg).trim();

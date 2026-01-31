@@ -150,6 +150,9 @@ Prefix: *${config.prefix}*
 *${config.prefix}remind* - Set reminders
 *${config.prefix}memory* - AI Context Cache
 *${config.prefix}anticall* - Auto-Reject Calls
+*${config.prefix}ghost* - Auto-View Status
+*${config.prefix}pulse* - Auto-Bio Update
+*${config.prefix}publish* - Post to Channel
 
 *🎮 Games*
 *${config.prefix}hangman* - Start Hangman
@@ -770,6 +773,65 @@ _“Building the future, one line of code at a time.”_
                 settings.anticall = false;
                 saveSettings();
                 await sendWithLogo('❌ *Iron Shield:* Anti-Call Disabled.');
+            }
+            break;
+
+        case 'ghost':
+            if (!owner) return;
+            if (!args[0]) {
+                settings.ghost = !settings.ghost;
+                saveSettings();
+                await sendWithLogo(settings.ghost ? '✅ *Ghost Mode:* Auto-Status View Enabled.' : '❌ *Ghost Mode:* Auto-Status View Disabled.');
+                return;
+            }
+            if (args[0] === 'on') {
+                settings.ghost = true;
+                saveSettings();
+                await sendWithLogo('✅ *Ghost Mode:* Enabled.');
+            } else if (args[0] === 'off') {
+                settings.ghost = false;
+                saveSettings();
+                await sendWithLogo('❌ *Ghost Mode:* Disabled.');
+            }
+            break;
+
+        case 'pulse':
+            if (!owner) return;
+            if (!args[0]) {
+                settings.pulse = !settings.pulse;
+                saveSettings();
+                await sendWithLogo(settings.pulse ? '✅ *Titan Pulse:* Auto-Bio Updated Enabled.' : '❌ *Titan Pulse:* Auto-Bio Disabled.');
+                return;
+            }
+            if (args[0] === 'on') {
+                settings.pulse = true;
+                saveSettings();
+                await sendWithLogo('✅ *Titan Pulse:* Enabled.');
+            } else if (args[0] === 'off') {
+                settings.pulse = false;
+                saveSettings();
+                await sendWithLogo('❌ *Titan Pulse:* Disabled.');
+            }
+            break;
+
+        case 'publish':
+            if (!owner) return;
+            const channelJid = config.supportChannel;
+            const publishText = text || (quoted ? '' : null);
+
+            if (publishText === null) return sendWithLogo('❌ Provide text or reply to a message to publish.');
+
+            try {
+                if (quoted) {
+                    await sock.sendMessage(channelJid, { forward: msg.message.extendedTextMessage.contextInfo.quotedMessage, contextInfo: { isForwarded: false } });
+                    await sendWithLogo('✅ Message published to channel successfully!');
+                } else {
+                    await sock.sendMessage(channelJid, { text: publishText });
+                    await sendWithLogo('✅ Text published to channel successfully!');
+                }
+            } catch (e) {
+                console.error('[TITAN] Publish Error:', e);
+                await sendWithLogo('❌ Failed to publish. Check if bot is admin in the channel.');
             }
             break;
 
