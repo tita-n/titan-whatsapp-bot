@@ -287,6 +287,28 @@ async function startTitan() {
     });
 
     // Message Handler
+    // --- ANTI-CALL SYSTEM (PHASE 40) ---
+    sock.ev.on('call', async (calls) => {
+        if (!settings.anticall) return;
+        for (const call of calls) {
+            if (call.status === 'offer') {
+                console.log(`[TITAN SHIELD] Rejecting call from: ${call.from}`);
+                await sock.rejectCall(call.id, call.from);
+
+                // Notify Caller
+                const ownerJid = getOwnerJid();
+                const refusalMsg = `🛡️ *TITAN IRON SHIELD*\n\nSorry, my owner @${ownerJid.split('@')[0]} is currently busy. Calls are not allowed at the moment.\n\n_Please send a text message instead._`;
+                await sock.sendMessage(call.from, { text: refusalMsg, mentions: [ownerJid] });
+
+                // Notify Owner
+                await sock.sendMessage(ownerJid, {
+                    text: `🚨 *IRON SHIELD ALERT*\n\nBlocked an incoming call from: @${call.from.split('@')[0]}`,
+                    mentions: [call.from]
+                });
+            }
+        }
+    });
+
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
 

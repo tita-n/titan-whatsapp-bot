@@ -149,6 +149,7 @@ Prefix: *${config.prefix}*
 *${config.prefix}todo* - Manage List
 *${config.prefix}remind* - Set reminders
 *${config.prefix}memory* - AI Context Cache
+*${config.prefix}anticall* - Auto-Reject Calls
 
 *🎮 Games*
 *${config.prefix}hangman* - Start Hangman
@@ -751,6 +752,25 @@ _“Building the future, one line of code at a time.”_
             if (sender !== jid) jidText += `\n👤 *SENDER:* ${sender}`;
 
             await sendWithLogo(jidText);
+            break;
+
+        case 'anticall':
+            if (!owner) return;
+            if (!args[0]) {
+                settings.anticall = !settings.anticall;
+                saveSettings();
+                await sendWithLogo(settings.anticall ? '✅ *Iron Shield:* Anti-Call Enabled globally.' : '❌ *Iron Shield:* Anti-Call Disabled.');
+                return;
+            }
+            if (args[0] === 'on') {
+                settings.anticall = true;
+                saveSettings();
+                await sendWithLogo('✅ *Iron Shield:* Anti-Call Enabled.');
+            } else if (args[0] === 'off') {
+                settings.anticall = false;
+                saveSettings();
+                await sendWithLogo('❌ *Iron Shield:* Anti-Call Disabled.');
+            }
             break;
 
         case 'pp':

@@ -32,7 +32,8 @@ let settings = {
     mode: 'private',    // Global Bot Mode: private, public, group
     ownerJid: '',       // Dynamic Owner (for templates)
     reminders: [],       // Array of { id, jid, text, time }
-    todo: {}             // jid: [tasks]
+    todo: {},             // jid: [tasks]
+    anticall: false       // Global Anti-Call Toggle
 };
 
 // Application Stores
