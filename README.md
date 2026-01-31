@@ -53,6 +53,10 @@ If Railway asks for a credit card, just switch to **Render** using the button ab
 *   📢 **Broadcaster**: `.publish` (post instantly to your channel).
 *   🖼️ **High-Res Media**: `.pp` (get any profile pic in HD) & `.vv` (anti-viewonce).
 *   ⚡ **Titan Pulse**: `.pulse` (auto-updates your Bio with real-time uptime).
+*   💎 **Premium UX**: Simulated presence (typing) and auto-reactions (`⏳` -> `✅`).
+*   🎨 **Visual Framing**: Sophisticated Unicode containers and framing.
+*   📜 **Verified Card**: Premium `externalAdReply` metadata on every reply.
+*   🏁 **Speed Metrics**: Real-time execution tracking on every response.
 *   🎮 **Games**: Hangman Battle Royale, Math Quiz, and more.
 
 ---
