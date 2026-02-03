@@ -634,33 +634,25 @@ _“Building the future, one line of code at a time.”_
             if (!args[0]) return sendWithLogo(`❌ Usage: ${config.prefix}dl [link]`);
             const dlUrl = args[0];
             try {
-                await sock.sendMessage(jid, { text: '⏬ *TITAN ENGINE:* Fetching media from link...' }, { quoted: msg });
-                const { downloadMedia } = require('./src/plugins/ytdlp');
-                const filePath = await downloadMedia(dlUrl, 'video'); // Try video/best by default
+                await sock.sendMessage(jid, { text: '⏬ *TITAN STEALTH:* Grabbing media via Cobalt...' }, { quoted: msg });
+                const { cobaltDownload } = require('./src/plugins/media_api');
+                const mediaUrl = await cobaltDownload(dlUrl);
 
-                if (!filePath) return sendWithLogo('❌ Failed to download. Link might be unsupported or private.');
+                if (!mediaUrl) return sendWithLogo('❌ Extraction failed. Link might be unsupported or private.');
 
-                const stats = fs.statSync(filePath);
-                if (stats.size > 100 * 1024 * 1024) { // 100MB limit for video
-                    fs.removeSync(filePath);
-                    return sendWithLogo('❌ Video too large (Limit: 100MB).');
-                }
+                const caption = `✅ *TITAN STEALTH OVERHAUL*\n🔗 *Source:* ${dlUrl}`;
+                const isAudio = dlUrl.includes('music.youtube.com') || dlUrl.includes('spotify') || args.includes('--audio');
 
-                const ext = path.extname(filePath).toLowerCase();
-                const caption = `✅ *Downloaded via TITAN Engine*\n🔗 *Source:* ${dlUrl}`;
-
-                if (['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) {
-                    await sock.sendMessage(jid, { image: { url: filePath }, caption }, { quoted: msg });
-                } else if (['.mp3', '.m4a', '.opus'].includes(ext)) {
-                    await sock.sendMessage(jid, { audio: { url: filePath }, mimetype: 'audio/mpeg', fileName: 'Titan_Audio.mp3' }, { quoted: msg });
+                if (isAudio) {
+                    await sock.sendMessage(jid, { audio: { url: mediaUrl }, mimetype: 'audio/mpeg', fileName: 'Titan_Audio.mp3' }, { quoted: msg });
                 } else {
-                    await sock.sendMessage(jid, { video: { url: filePath }, caption }, { quoted: msg });
+                    // Cobalt usually returns mp4 for videos or direct image links
+                    await sock.sendMessage(jid, { video: { url: mediaUrl }, caption }, { quoted: msg });
                 }
 
-                fs.removeSync(filePath);
             } catch (e) {
                 console.error('[TITAN DOWNLOAD] Error:', e);
-                await sendWithLogo('❌ Download failed. Engine throttled or unsupported link.');
+                await sendWithLogo('❌ Stealth API Error. Cobalt might be down or link is invalid.');
             }
             break;
 

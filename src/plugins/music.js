@@ -1,29 +1,22 @@
-const fs = require('fs-extra');
 const { config } = require('../../utils');
-const { searchYoutube, downloadMedia } = require('./ytdlp');
+const { searchPiped, getPipedStream } = require('./media_api');
 
 async function handleMusic(sock, msg, jid, sender, query, sendWithLogo) {
     if (!query) return sendWithLogo(`❌ Usage: ${config.prefix}play [song name]`);
 
     try {
-        await sock.sendMessage(jid, { text: `🔍 *Searching TITAN Engine:* \`${query}\`...` }, { quoted: msg });
+        await sock.sendMessage(jid, { text: `🔍 *TITAN STEALTH:* Searching for \`${query}\`...` }, { quoted: msg });
 
-        const video = await searchYoutube(query);
-        if (!video) return sendWithLogo('❌ No results found or engine throttled.');
+        const video = await searchPiped(query);
+        if (!video) return sendWithLogo('❌ No results found. All Piped instances might be throttled.');
 
-        await sock.sendMessage(jid, { text: `⏬ *Downloading:* \`${video.title}\` (Turbo Engine)...` }, { quoted: msg });
+        await sock.sendMessage(jid, { text: `🎧 *TITAN STEALTH:* Fetching audio stream...` }, { quoted: msg });
 
-        const filePath = await downloadMedia(video.url, 'audio');
-        if (!filePath) return sendWithLogo('❌ Download failed. Link might be restricted.');
-
-        const stats = fs.statSync(filePath);
-        if (stats.size > 50 * 1024 * 1024) { // 50MB limit for free tier
-            fs.removeSync(filePath);
-            return sendWithLogo('❌ File too large for free tier (Limit: 50MB).');
-        }
+        const streamUrl = await getPipedStream(video.id, 'audio');
+        if (!streamUrl) return sendWithLogo('❌ Extraction failed. Video might be age-restricted or private.');
 
         await sock.sendMessage(jid, {
-            audio: { url: filePath },
+            audio: { url: streamUrl },
             mimetype: 'audio/mpeg',
             fileName: `${video.title}.mp3`,
             ptt: false,
@@ -39,11 +32,9 @@ async function handleMusic(sock, msg, jid, sender, query, sendWithLogo) {
             }
         }, { quoted: msg });
 
-        fs.removeSync(filePath);
-
     } catch (e) {
         console.error('[TITAN MUSIC] Error:', e.message);
-        await sendWithLogo('❌ YT-DLP Error. Please try again later.');
+        await sendWithLogo('❌ Stealth API Error. Piped instances might be down.');
     }
 }
 
