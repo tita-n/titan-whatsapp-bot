@@ -2,7 +2,6 @@ const YTDlpWrap = require('yt-dlp-wrap-plus');
 const fs = require('fs-extra');
 const path = require('path');
 const { config } = require('../../utils');
-Line 5:
 
 const binDir = path.join(process.cwd(), 'yt-dlp-bin');
 const binPath = path.join(binDir, process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
