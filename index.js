@@ -39,7 +39,7 @@ fs.ensureDirSync(config.authPath);
 fs.ensureDirSync(config.dataPath);
 fs.ensureDirSync(config.downloadPath);
 
-// --- UNIVERSAL SESSION ID DECODER (PHASE 38) ---
+// --- UNIVERSAL SESSION ID DECODER (PHASE 38/54) ---
 if (process.env.SESSION_ID) {
     const credsPath = path.join(config.authPath, 'creds.json');
     let shouldDecode = false;
@@ -47,9 +47,8 @@ if (process.env.SESSION_ID) {
     if (!fs.existsSync(credsPath)) {
         shouldDecode = true;
     } else {
-        // Check if the current SESSION_ID is different from what we have
         try {
-            const currentCreds = fs.readFileSync(credsPath, 'utf-8');
+            const currentCreds = fs.readFileSync(credsPath, 'utf-8').trim();
             const sid = process.env.SESSION_ID.trim();
             let decoded;
             if (sid.startsWith('{')) {
@@ -60,10 +59,8 @@ if (process.env.SESSION_ID) {
                 if (cleanSid.includes('~')) cleanSid = cleanSid.split('~')[1];
                 decoded = Buffer.from(cleanSid, 'base64').toString('utf-8');
             }
-
-            // If the JSON content doesn't match exactly, we must re-decode
-            if (currentCreds !== decoded) {
-                console.log('[TITAN] SESSION_ID change detected. Wiping auth folder...');
+            if (currentCreds.replace(/\s/g, '') !== decoded.replace(/\s/g, '')) {
+                console.log('[TITAN] SESSION_ID mismatch. Wiping...');
                 shouldDecode = true;
             }
         } catch (e) {
@@ -72,31 +69,21 @@ if (process.env.SESSION_ID) {
     }
 
     if (shouldDecode) {
-        console.log('[TITAN] Initializing Universal Session...');
         try {
             let sid = process.env.SESSION_ID.trim();
             let decoded;
-
-            if (sid.startsWith('{')) {
-                decoded = sid;
-            } else {
+            if (sid.startsWith('{')) { decoded = sid; }
+            else {
                 if (sid.includes(':')) sid = sid.split(':')[1];
                 if (sid.includes('~')) sid = sid.split('~')[1];
                 decoded = Buffer.from(sid, 'base64').toString('utf-8');
             }
-
-            // Validation
             JSON.parse(decoded);
-
-            // Clean slate: Wipe the entire auth folder including keys/ sessions
             fs.removeSync(config.authPath);
             fs.ensureDirSync(config.authPath);
-
             fs.writeFileSync(credsPath, decoded);
-            console.log('[TITAN] Session restored successfully with a clean slate.');
-        } catch (e) {
-            console.error('[TITAN] Failed to decode Session ID. Check format.');
-        }
+            console.log('[TITAN] Session Clean Slate.');
+        } catch (e) { }
     }
 }
 
@@ -148,16 +135,16 @@ async function startTitan() {
         printQRInTerminal: false,
         browser: Browsers.ubuntu('Chrome'),
         markOnlineOnConnect: false,
-        generateHighQualityLinkPreview: false,
         syncFullHistory: false,
         linkPreview: false,
-        // Help Baileys find deleted/quoted messages for retries (Fix Bad MAC)
+        connectTimeoutMs: 60000,
+        keepAliveIntervalMs: 30000,
         getMessage: async (key) => {
             if (msgStore) {
                 const stored = msgStore.get(key.id);
                 if (stored) return stored.msg;
             }
-            return { conversation: 'TITAN Shielding...' };
+            return null;
         },
         patchMessageBeforeSending: (message) => {
             const requiresPatch = !!(
