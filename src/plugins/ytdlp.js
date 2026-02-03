@@ -27,7 +27,7 @@ async function ensureBinary() {
 }
 
 /**
- * High-speed YouTube search using yt-dlp.
+ * High-speed YouTube search using yt-dlp with stealth headers.
  */
 async function searchYoutube(query) {
     await ensureBinary();
@@ -36,7 +36,10 @@ async function searchYoutube(query) {
             `ytsearch1:${query}`,
             '--dump-json',
             '--no-playlist',
-            '--flat-playlist'
+            '--flat-playlist',
+            '--impersonate', 'chrome',
+            '--extractor-args', 'youtube:player_client=ios,web',
+            '--no-check-certificates'
         ]);
         const data = JSON.parse(result);
         return {
@@ -48,13 +51,13 @@ async function searchYoutube(query) {
             author: data.uploader || data.channel
         };
     } catch (e) {
-        console.error('[TITAN] YT Search Error:', e);
+        console.error('[TITAN] YT Search Stealth Error:', e);
         return null;
     }
 }
 
 /**
- * Download audio or video from any supported URL.
+ * Download audio or video from any supported URL using stealth engine.
  */
 async function downloadMedia(url, type = 'audio') {
     await ensureBinary();
@@ -63,15 +66,21 @@ async function downloadMedia(url, type = 'audio') {
     const filePath = path.join(config.downloadPath, `titan_${timestamp}.${ext}`);
     fs.ensureDirSync(config.downloadPath);
 
+    const stealthArgs = [
+        '--impersonate', 'chrome',
+        '--extractor-args', 'youtube:player_client=ios,web',
+        '--no-check-certificates'
+    ];
+
     const args = type === 'audio'
-        ? [url, '-f', 'bestaudio', '--extract-audio', '--audio-format', 'mp3', '-o', filePath]
-        : [url, '-f', 'bestvideo+bestaudio/best', '-o', filePath, '--merge-output-format', 'mp4'];
+        ? [url, '-f', 'bestaudio', '--extract-audio', '--audio-format', 'mp3', '-o', filePath, ...stealthArgs]
+        : [url, '-f', 'bestvideo+bestaudio/best', '-o', filePath, '--merge-output-format', 'mp4', ...stealthArgs];
 
     try {
         await ytDlp.execPromise(args);
         if (fs.existsSync(filePath)) return filePath;
     } catch (e) {
-        console.error('[TITAN] Media Download Error:', e);
+        console.error('[TITAN] Media Download Stealth Error:', e);
     }
     return null;
 }
