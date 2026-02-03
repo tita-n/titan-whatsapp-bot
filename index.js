@@ -111,6 +111,24 @@ server.on('error', (err) => {
     }
 });
 
+// --- NUCLEAR HANDSHAKE RECOVERY (PHASE 53) ---
+process.on('uncaughtException', (err) => {
+    const isNoiseError = err.message.includes('Unsupported state') ||
+        err.message.includes('unable to authenticate data') ||
+        err.message.includes('Bad MAC');
+
+    if (isNoiseError) {
+        console.error('[TITAN RECOVERY] FATAL NOISE ERR: Purging corrupted session...');
+        try {
+            fs.emptyDirSync(config.authPath);
+            console.log('[TITAN] Auth folder wiped. Please restart and re-pair.');
+        } catch (e) { }
+        process.exit(1);
+    } else {
+        console.error('[TITAN] Uncaught Exception:', err);
+    }
+});
+
 // Main
 // --- CONNECTION FLAGS (GLOBAL) ---
 let connectionLock = false;
