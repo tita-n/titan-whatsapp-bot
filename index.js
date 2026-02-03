@@ -130,10 +130,17 @@ async function startTitan() {
         printQRInTerminal: false,
         browser: Browsers.ubuntu('Chrome'),
         markOnlineOnConnect: false,
-        connectTimeoutMs: 60000,
-        keepAliveIntervalMs: 30000,
+        generateHighQualityLinkPreview: false,
         syncFullHistory: false,
         linkPreview: false,
+        // Help Baileys find deleted/quoted messages for retries (Fix Bad MAC)
+        getMessage: async (key) => {
+            if (msgStore) {
+                const stored = msgStore.get(key.id);
+                if (stored) return stored.msg;
+            }
+            return { conversation: 'TITAN Shielding...' };
+        },
         patchMessageBeforeSending: (message) => {
             const requiresPatch = !!(
                 message.buttonsMessage ||
@@ -171,13 +178,13 @@ async function startTitan() {
     });
 
     // --- SELF PINGER (FOR RENDER 24/7) ---
+    const axios = require('axios'); // Move outside interval
     setInterval(async () => {
         const pingerUrl = settings.appUrl || process.env.RENDER_EXTERNAL_URL;
         if (pingerUrl) {
             try {
-                const axios = require('axios');
                 await axios.get(pingerUrl).catch(() => null);
-                console.log('[TITAN] Self-ping success:', pingerUrl);
+                console.log('[TITAN] Self-ping heartbeat');
             } catch (e) { }
         }
     }, 5 * 60 * 1000);
@@ -205,9 +212,9 @@ async function startTitan() {
                     const ppUrl = await sock.profilePictureUrl(participant, 'image').catch(() => null);
 
                     if (ppUrl) {
-                        await sock.sendMessage(id, { image: { url: ppUrl }, caption: text, mentions: [participant] });
+                        sock.sendMessage(id, { image: { url: ppUrl }, caption: text, mentions: [participant] }).catch(() => { });
                     } else {
-                        await sock.sendMessage(id, { text, mentions: [participant] });
+                        sock.sendMessage(id, { text, mentions: [participant] }).catch(() => { });
                     }
                 }
             }
@@ -216,7 +223,7 @@ async function startTitan() {
                 for (const participant of participants) {
                     if (participant.includes(sock.user.id.split(':')[0] + '@s.whatsapp.net')) return;
                     const text = `Goodbye @${participant.split('@')[0]} 👋`;
-                    await sock.sendMessage(id, { text, mentions: [participant] });
+                    sock.sendMessage(id, { text, mentions: [participant] }).catch(() => { });
                 }
             }
 
@@ -302,9 +309,9 @@ async function startTitan() {
             const reason = lastDisconnect?.error?.output?.statusCode;
             const msg = lastDisconnect?.error?.message || 'Unknown reason';
 
-            console.log(`[TITAN] Connection closed: ${msg} (${reason})`);
+            console.log(`[TITAN] Connection Issue: ${msg} (${reason})`);
 
-            // Handle Specific Fatal Reasons
+            // --- SESSION RECOVERY (SELF-HEAL) ---
             const isUnauthorized = reason === DisconnectReason.loggedOut || reason === 401;
             const isConflict = reason === DisconnectReason.connectionClosed || reason === 428 || reason === 440;
 
@@ -324,8 +331,7 @@ async function startTitan() {
         }
     });
 
-    // Message Handler
-    // --- ANTI-CALL SYSTEM (PHASE 40) ---
+    // Anti-Call System
     sock.ev.on('call', async (calls) => {
         if (!settings.anticall) return;
         for (const call of calls) {
@@ -333,14 +339,12 @@ async function startTitan() {
                 console.log(`[TITAN SHIELD] Rejecting call from: ${call.from}`);
                 await sock.rejectCall(call.id, call.from);
 
-                // Notify Caller
                 const ownerJid = getOwnerJid();
-                const refusalMsg = `🛡️ *TITAN IRON SHIELD*\n\nSorry, my owner @${ownerJid.split('@')[0]} is currently busy. Calls are not allowed at the moment.\n\n_Please send a text message instead._`;
+                const refusalMsg = `🛡️ *TITAN IRON SHIELD*\n\nSorry, my owner @${ownerJid.split('@')[0]} is currently busy. Calls are not allowed.\n\n_Please send a text message instead._`;
                 await sock.sendMessage(call.from, { text: refusalMsg, mentions: [ownerJid] });
 
-                // Notify Owner
                 await sock.sendMessage(ownerJid, {
-                    text: `🚨 *IRON SHIELD ALERT*\n\nBlocked an incoming call from: @${call.from.split('@')[0]}`,
+                    text: `🚨 *IRON SHIELD ALERT*\n\nBlocked a call from: @${call.from.split('@')[0]}`,
                     mentions: [call.from]
                 });
             }
@@ -352,12 +356,11 @@ async function startTitan() {
 
         for (const msg of messages) {
             try {
-                // --- GHOST MODE: AUTO-STATUS VIEW (PHASE 41) ---
                 const jid = msg.key.remoteJid;
                 if (jid === 'status@broadcast' && settings.ghost) {
-                    await sock.readMessages([msg.key]);
+                    sock.readMessages([msg.key]).catch(() => { });
                     console.log(`[TITAN GHOST] Status viewed from: ${msg.pushName || 'Someone'}`);
-                    continue; // Skip further processing for status messages
+                    continue;
                 }
 
                 if (!msg.message) continue;
@@ -373,29 +376,31 @@ async function startTitan() {
 
                 console.log(`[TITAN] ${jid.split('@')[0]} | @${sender.split('@')[0]}: ${text || '(media)'}`);
 
-                // --- AUTO OWNER DETECTION (PHASE 15) ---
+                // --- AUTO OWNER DETECTION ---
                 if (!settings.ownerJid && !config.ownerNumber && sender && !fromMe) {
                     settings.ownerJid = sender;
-                    await saveSettings();
-                    await sock.sendMessage(jid, { text: `🎉 *TITAN CONNECTED!*\n\nYou have been auto-detected as the **OWNER**. \n\nCommands are now locked to you. Type *${config.prefix}menu* to begin!` }, { quoted: msg });
+                    saveSettings();
+                    sock.sendMessage(jid, { text: `🎉 *TITAN CONNECTED!*\n\nYou have been auto-detected as the **OWNER**. \n\nCommands are now locked to you. Type *${config.prefix}menu* to begin!` }).catch(() => { });
                 }
 
-                // --- PASSIVE ANTI-VIEWONCE ---
+                // --- PASSIVE ANTI-VIEWONCE (NON-BLOCKING) ---
                 if (settings.antiviewonce) {
                     const viewOnceMsg = msg.message.viewOnceMessage || msg.message.viewOnceMessageV2 ||
                         msg.message.viewOnceMessageV2Extension || msg.message.ephemeralMessage?.message?.viewOnceMessageV2;
                     if (viewOnceMsg) {
-                        try {
-                            const buffer = await downloadMediaMessage(msg, 'buffer', {});
-                            const content = viewOnceMsg.message || viewOnceMsg;
-                            const mediaType = Object.keys(content).find(k => k.endsWith('Message'));
-                            const caption = `🕵️ *Anti-ViewOnce Spy*\nSource: ${jid}\nSender: @${sender.split('@')[0]}`;
-                            if (mediaType.includes('image')) {
-                                await sock.sendMessage(getOwnerJid(), { image: buffer, caption, mentions: [sender] });
-                            } else if (mediaType.includes('video')) {
-                                await sock.sendMessage(getOwnerJid(), { video: buffer, caption, mentions: [sender] });
-                            }
-                        } catch (e) { console.error('[TITAN VV SPY] Error:', e.message); }
+                        (async () => {
+                            try {
+                                const buffer = await downloadMediaMessage(msg, 'buffer', {});
+                                const content = viewOnceMsg.message || viewOnceMsg;
+                                const mediaType = Object.keys(content).find(k => k.endsWith('Message'));
+                                const caption = `🕵️ *Anti-ViewOnce Spy*\nSource: ${jid}\nSender: @${sender.split('@')[0]}`;
+                                if (mediaType.includes('image')) {
+                                    await sock.sendMessage(getOwnerJid(), { image: buffer, caption, mentions: [sender] });
+                                } else if (mediaType.includes('video')) {
+                                    await sock.sendMessage(getOwnerJid(), { video: buffer, caption, mentions: [sender] });
+                                }
+                            } catch (e) { }
+                        })();
                     }
                 }
 
@@ -456,25 +461,23 @@ async function startTitan() {
 
                 const args = text.slice(config.prefix.length).trim().split(/\s+/);
                 const cmd = args.shift().toLowerCase();
-
                 const cmdStart = Date.now();
 
-                // --- PHASE 43: LIGHTNING OPTIMIZATION ---
+                // --- NUCLEAR SPEED: NON-BLOCKING EXECUTION ---
                 try {
-                    // 1. Non-blocking Micro-UX
-                    sock.sendMessage(jid, { react: { text: '⏳', key: msg.key } }).catch(e => console.error('[TITAN REACT ERR]', e));
-                    sock.sendPresenceUpdate('composing', jid).catch(e => console.error('[TITAN PRESENCE ERR]', e));
+                    sock.sendMessage(jid, { react: { text: '⏳', key: msg.key } }).catch(() => { });
+                    sock.sendPresenceUpdate('composing', jid).catch(() => { });
 
-                    // 2. Immediate Execution (Passing cmdStart)
-                    await handleCommand(sock, msg, jid, sender, cmd, args, text, owner, cmdStart);
+                    // Fire and forget (Command internally handles its own flow)
+                    handleCommand(sock, msg, jid, sender, cmd, args, text, owner, cmdStart).catch(cmdErr => {
+                        console.error('[TITAN LIGHTNING ERR]', cmdErr);
+                        sock.sendMessage(jid, { react: { text: '❌', key: msg.key } }).catch(() => { });
+                    });
 
-                    // 3. Success React (Non-blocking)
-                    sock.sendMessage(jid, { react: { text: '✅', key: msg.key } }).catch(e => console.error('[TITAN REACT ERR]', e));
-                    sock.sendPresenceUpdate('paused', jid).catch(e => console.error('[TITAN PRESENCE ERR]', e));
-
-                } catch (cmdErr) {
-                    console.error('[TITAN L-SPEED ERR]', cmdErr);
-                    sock.sendMessage(jid, { react: { text: '❌', key: msg.key } }).catch(() => { });
+                    sock.sendMessage(jid, { react: { text: '✅', key: msg.key } }).catch(() => { });
+                    sock.sendPresenceUpdate('paused', jid).catch(() => { });
+                } catch (err) {
+                    console.error('[TITAN DISPATCH ERR]', err);
                 }
 
             } catch (e) {
