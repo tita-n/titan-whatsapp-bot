@@ -112,6 +112,9 @@ server.on('error', (err) => {
 });
 
 // Main
+// --- CONNECTION FLAGS (GLOBAL) ---
+let connectionLock = false;
+
 async function startTitan() {
     console.log('[TITAN] Starting...');
     const { state, saveCreds } = await useMultiFileAuthState(config.authPath);
@@ -154,9 +157,6 @@ async function startTitan() {
         }
     });
 
-    // --- CONNECTION FLAGS ---
-    let connectionLock = false;
-
     // --- KEEP ALIVE PING ---
     const keepAlive = setInterval(async () => {
         if (sock.user) {
@@ -190,11 +190,14 @@ async function startTitan() {
             const { id, participants, action } = update;
             console.log(`[TITAN] Group Event: ${id} | Action: ${action}`);
 
-            if (action === 'add' && settings.welcome[id]) {
+            if (action === 'add' && settings.welcome) {
                 let groupName = 'Group';
                 try {
                     const meta = await getCachedGroupMetadata(sock, id);
-                    if (meta) groupName = meta.subject;
+                    if (meta) {
+                        groupName = meta.subject;
+                        if (participants.includes(sock.user.id.split(':')[0] + '@s.whatsapp.net')) return;
+                    }
                 } catch (e) { }
 
                 for (const participant of participants) {
@@ -209,8 +212,9 @@ async function startTitan() {
                 }
             }
 
-            if (action === 'remove' && settings.goodbye[id]) {
+            if (action === 'remove' && settings.goodbye) {
                 for (const participant of participants) {
+                    if (participant.includes(sock.user.id.split(':')[0] + '@s.whatsapp.net')) return;
                     const text = `Goodbye @${participant.split('@')[0]} 👋`;
                     await sock.sendMessage(id, { text, mentions: [participant] });
                 }
@@ -223,22 +227,23 @@ async function startTitan() {
 
     // Anti-Delete Listener 
     sock.ev.on('messages.update', async (updates) => {
+        if (!settings.antidelete) return;
         for (const update of updates) {
             if (update.update.message && update.update.message.protocolMessage && update.update.message.protocolMessage.type === 0) {
                 const key = update.key;
                 const jid = key.remoteJid;
+                const messageId = update.update.message.protocolMessage.key.id;
 
-                if (settings.antidelete[jid]) {
-                    const deletedMsg = msgStore.get(key.id);
-                    if (deletedMsg) {
-                        const { msg, sender } = deletedMsg;
-                        const caption = `🗑️ *Anti-Delete Detected*\nSender: @${sender.split('@')[0]}\nRecovered Content:`;
-                        const text = getMessageText({ message: msg });
-                        if (text) {
-                            await sock.sendMessage(jid, { text: `${caption}\n\n${text}`, mentions: [sender] });
-                        } else {
-                            await sock.sendMessage(jid, { forward: { key: { remoteJid: jid, id: key.id }, message: msg }, caption: caption, mentions: [sender] });
-                        }
+                const deletedMsg = msgStore.get(messageId);
+                if (deletedMsg) {
+                    const { msg, sender } = deletedMsg;
+                    const caption = `🗑️ *Anti-Delete Detected*\nSender: @${sender.split('@')[0]}\nRecovered Content:`;
+                    const text = getMessageText({ message: msg });
+                    if (text) {
+                        await sock.sendMessage(jid, { text: `${caption}\n\n${text}`, mentions: [sender] });
+                    } else {
+                        const forwardJid = isGroup(jid) ? jid : sender;
+                        await sock.sendMessage(forwardJid, { forward: { key: { remoteJid: forwardJid, id: messageId }, message: msg }, caption: caption, mentions: [sender] });
                     }
                 }
             }
@@ -271,7 +276,7 @@ async function startTitan() {
             console.log('[TITAN] ✅ Connected successfully!');
             startPulse();
 
-            await sock.sendMessage(getOwnerJid(), { text: '⚡ *TITAN SYSTEM ONLINE*\n\nConnection established safely. No more rolling restarts detected.' });
+            await sock.sendMessage(getOwnerJid(), { text: '⚡ *TITAN SYSTEM ONLINE*\n\nGlobal Shields Active. Stability level: CRITICAL_MAX.' });
 
             // --- SESSION EXPORTER ---
             if (!process.env.SESSION_ID) {
@@ -301,7 +306,7 @@ async function startTitan() {
 
             // Handle Specific Fatal Reasons
             const isUnauthorized = reason === DisconnectReason.loggedOut || reason === 401;
-            const isConflict = reason === DisconnectReason.connectionClosed || reason === 428;
+            const isConflict = reason === DisconnectReason.connectionClosed || reason === 428 || reason === 440;
 
             if (isUnauthorized) {
                 console.error('[TITAN] SESSION EXPIRED: Deleting credentials...');
@@ -310,8 +315,8 @@ async function startTitan() {
                 // Don't auto-restart infinitely on 401
                 process.exit(1);
             } else if (isConflict) {
-                console.log('[TITAN] Connection conflict. Reconnecting in 5s...');
-                setTimeout(() => startTitan(), 5000);
+                console.log('[TITAN] Conflict/Stream error. Waiting 15s for old instance to die...');
+                setTimeout(() => startTitan(), 15000);
             } else {
                 console.log('[TITAN] Restarting script in 5s...');
                 setTimeout(() => startTitan(), 5000);
@@ -361,7 +366,8 @@ async function startTitan() {
                 const sender = fromMe ? (sock.user.id.split(':')[0] + '@s.whatsapp.net') : (msg.key.participant || jid);
                 const text = getMessageText(msg).trim();
 
-                if (jid.endsWith('@g.us') && !fromMe) {
+                // Store messages for Anti-Delete (All incoming)
+                if (!fromMe) {
                     msgStore.set(msg.key.id, { msg: msg.message, sender, timestamp: Date.now() });
                 }
 
@@ -375,20 +381,21 @@ async function startTitan() {
                 }
 
                 // --- PASSIVE ANTI-VIEWONCE ---
-                if (isGroup(jid) && settings.antiviewonce[jid]) {
-                    const viewOnceMsg = msg.message.viewOnceMessage || msg.message.viewOnceMessageV2;
+                if (settings.antiviewonce) {
+                    const viewOnceMsg = msg.message.viewOnceMessage || msg.message.viewOnceMessageV2 ||
+                        msg.message.viewOnceMessageV2Extension || msg.message.ephemeralMessage?.message?.viewOnceMessageV2;
                     if (viewOnceMsg) {
                         try {
-                            const buffer = await downloadMediaMessage({ message: viewOnceMsg }, 'buffer', {});
-                            const content = viewOnceMsg.message;
+                            const buffer = await downloadMediaMessage(msg, 'buffer', {});
+                            const content = viewOnceMsg.message || viewOnceMsg;
                             const mediaType = Object.keys(content).find(k => k.endsWith('Message'));
-                            const caption = `🕵️ *Anti-ViewOnce Spy*\nGroup: ${jid}\nSender: @${sender.split('@')[0]}`;
+                            const caption = `🕵️ *Anti-ViewOnce Spy*\nSource: ${jid}\nSender: @${sender.split('@')[0]}`;
                             if (mediaType.includes('image')) {
                                 await sock.sendMessage(getOwnerJid(), { image: buffer, caption, mentions: [sender] });
                             } else if (mediaType.includes('video')) {
                                 await sock.sendMessage(getOwnerJid(), { video: buffer, caption, mentions: [sender] });
                             }
-                        } catch (e) { }
+                        } catch (e) { console.error('[TITAN VV SPY] Error:', e.message); }
                     }
                 }
 
@@ -402,38 +409,31 @@ async function startTitan() {
                 const isGroupChat = isGroup(jid);
                 const isChannelChat = isChannel(jid);
 
-                // Logic: 
-                // 1. Owner ALWAYS allowed.
-                // 2. Private: Only owner allowed.
-                // 3. Group: Allowed if in group. (In PM, only owner).
-                // 4. Channel: Allowed if in channel (Owner / Public).
-                // 5. Public: Allowed everywhere.
                 let allowed = owner;
                 if (!allowed) {
                     if (mode === 'public') allowed = true;
                     else if (mode === 'group' && isGroupChat) allowed = true;
-                    else if (mode === 'public' && isChannelChat) allowed = true; // Channels usually public anyway
+                    else if (mode === 'public' && isChannelChat) allowed = true;
                 }
 
                 if (!allowed) continue;
 
                 // --- ANTI-SPAM ---
-                if (isGroup(jid) && settings.antispam && settings.antispam[jid] && !fromMe) {
+                if (isGroup(jid) && settings.antispam && !fromMe) {
                     const now = Date.now();
                     const userSpam = spamTracker.get(`${jid}_${sender}`) || { count: 0, lastMsg: 0, warned: false };
                     if (now - userSpam.lastMsg < 10000) { userSpam.count++; } else { userSpam.count = 1; userSpam.warned = false; }
                     userSpam.lastMsg = now;
                     spamTracker.set(`${jid}_${sender}`, userSpam);
 
-                    if (userSpam.count >= 5) {
+                    if (userSpam.count >= 6) {
                         if (!userSpam.warned) {
                             await sock.sendMessage(jid, { text: `⚠️ @${sender.split('@')[0]}, stop spamming!`, mentions: [sender] });
                             userSpam.warned = true;
-                            spamTracker.set(`${jid}_${sender}`, userSpam);
-                        } else if (userSpam.count >= 8) {
+                        } else if (userSpam.count >= 10) {
                             try {
                                 const meta = await getCachedGroupMetadata(sock, jid);
-                                const admins = meta.participants.filter(p => p.admin).map(p => p.id);
+                                const admins = getGroupAdmins(meta.participants);
                                 const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
                                 if (admins.includes(botId) && !admins.includes(sender)) {
                                     await sock.sendMessage(jid, { text: `🚫 @${sender.split('@')[0]} removed for spamming.`, mentions: [sender] });

@@ -21,9 +21,8 @@ const ADMIN_COMMANDS = [
 ];
 
 async function handleAntiLink(sock, msg, jid, text, sender) {
-    if (!settings.antilink[jid]) return false; // Use Shared Settings
+    if (!settings.antilink) return false;
 
-    // Regex for WhatsApp links
     const linkRegex = /chat\.whatsapp\.com\/[0-9A-Za-z]{20,}/i;
     if (!linkRegex.test(text)) return false;
 
@@ -32,17 +31,14 @@ async function handleAntiLink(sock, msg, jid, text, sender) {
         const admins = getGroupAdmins(meta.participants);
         const botJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
 
-        const isSenderAdmin = admins.includes(sender);
-        const isBotAdmin = admins.includes(botJid);
-
-        if (isSenderAdmin) return false;
-        if (!isBotAdmin) return false;
+        if (admins.includes(sender)) return false; // Owner/Admin bypass
+        if (!admins.includes(botJid)) return false; // Bot not admin
 
         await sock.sendMessage(jid, { delete: msg.key });
         await sock.groupParticipantsUpdate(jid, [sender], 'remove');
         return true;
     } catch (e) {
-        console.error('[TITAN] Antilink check failed:', e);
+        console.error('[TITAN] Antilink error:', e.message);
         return false;
     }
 }
@@ -191,6 +187,15 @@ Prefix: *${config.prefix}*
 *${config.prefix}update* - Flash update (Zero Downtime)
 *${config.prefix}restart* - Force reboot
 
+*🛡️ Global Shields*
+• Antilink: ${settings.antilink ? '✅' : '❌'}
+• Antidelete: ${settings.antidelete ? '✅' : '❌'}
+• Welcome: ${settings.welcome ? '✅' : '❌'}
+• Goodbye: ${settings.goodbye ? '✅' : '❌'}
+• Anti-VV: ${settings.antiviewonce ? '✅' : '❌'}
+• Anticall: ${settings.anticall ? '✅' : '❌'}
+• Antispam: ${settings.antispam ? '✅' : '❌'}
+
 *Current Mode:* ${settings.mode || 'private'}`;
             await sendWithLogo(menuText);
             break;
@@ -270,62 +275,56 @@ Prefix: *${config.prefix}*
             break;
 
         case 'antilink':
-            if (!isGroup(jid)) return sendWithLogo('❌ Groups only!');
             if (!args[0]) {
-                const current = settings.antilink[jid];
-                settings.antilink[jid] = !current;
+                settings.antilink = !settings.antilink;
                 saveSettings();
-                await sendWithLogo(settings.antilink[jid] ? '✅ Antilink Enabled.' : '❌ Antilink Disabled.');
+                await sendWithLogo(settings.antilink ? '✅ Global Antilink Enabled.' : '❌ Global Antilink Disabled.');
                 return;
             }
             if (args[0] === 'on') {
-                settings.antilink[jid] = true;
+                settings.antilink = true;
                 saveSettings();
-                await sendWithLogo('✅ Antilink Enabled.');
+                await sendWithLogo('✅ Global Antilink Enabled.');
             } else if (args[0] === 'off') {
-                settings.antilink[jid] = false;
+                settings.antilink = false;
                 saveSettings();
-                await sendWithLogo('❌ Antilink Disabled.');
+                await sendWithLogo('❌ Global Antilink Disabled.');
             }
             break;
 
         case 'welcome':
-            if (!isGroup(jid)) return sendWithLogo('❌ Groups only!');
             if (!args[0]) {
-                const current = settings.welcome[jid];
-                settings.welcome[jid] = !current;
+                settings.welcome = !settings.welcome;
                 saveSettings();
-                await sendWithLogo(settings.welcome[jid] ? '✅ Welcome msg Enabled.' : '❌ Welcome msg Disabled.');
+                await sendWithLogo(settings.welcome ? '✅ Global Welcome msg Enabled.' : '❌ Global Welcome msg Disabled.');
                 return;
             }
             if (args[0] === 'on') {
-                settings.welcome[jid] = true;
+                settings.welcome = true;
                 saveSettings();
-                await sendWithLogo('✅ Welcome msg Enabled.');
+                await sendWithLogo('✅ Global Welcome msg Enabled.');
             } else if (args[0] === 'off') {
-                settings.welcome[jid] = false;
+                settings.welcome = false;
                 saveSettings();
-                await sendWithLogo('❌ Welcome msg Disabled.');
+                await sendWithLogo('❌ Global Welcome msg Disabled.');
             }
             break;
 
         case 'goodbye':
-            if (!isGroup(jid)) return sendWithLogo('❌ Groups only!');
             if (!args[0]) {
-                const current = settings.goodbye[jid];
-                settings.goodbye[jid] = !current;
+                settings.goodbye = !settings.goodbye;
                 saveSettings();
-                await sendWithLogo(settings.goodbye[jid] ? '✅ Goodbye msg Enabled.' : '❌ Goodbye msg Disabled.');
+                await sendWithLogo(settings.goodbye ? '✅ Global Goodbye msg Enabled.' : '❌ Global Goodbye msg Disabled.');
                 return;
             }
             if (args[0] === 'on') {
-                settings.goodbye[jid] = true;
+                settings.goodbye = true;
                 saveSettings();
-                await sendWithLogo('✅ Goodbye msg Enabled.');
+                await sendWithLogo('✅ Global Goodbye msg Enabled.');
             } else if (args[0] === 'off') {
-                settings.goodbye[jid] = false;
+                settings.goodbye = false;
                 saveSettings();
-                await sendWithLogo('❌ Goodbye msg Disabled.');
+                await sendWithLogo('❌ Global Goodbye msg Disabled.');
             }
             break;
 
@@ -373,43 +372,39 @@ Prefix: *${config.prefix}*
 
         case 'antiviewonce':
         case 'antivv':
-            if (!isGroup(jid)) return sendWithLogo('❌ Groups only!');
             if (!args[0]) {
-                const current = settings.antiviewonce[jid];
-                settings.antiviewonce[jid] = !current;
+                settings.antiviewonce = !settings.antiviewonce;
                 saveSettings();
-                await sendWithLogo(settings.antiviewonce[jid] ? '✅ Spy Mode Updated: Pasive Anti-ViewOnce Enabled.' : '❌ Spy Mode Disabled.');
+                await sendWithLogo(settings.antiviewonce ? '✅ Global Passive Anti-ViewOnce Enabled.' : '❌ Global Passive Anti-ViewOnce Disabled.');
                 return;
             }
             if (args[0] === 'on') {
-                settings.antiviewonce[jid] = true;
+                settings.antiviewonce = true;
                 saveSettings();
-                await sendWithLogo('✅ Spy Mode Enabled.');
+                await sendWithLogo('✅ Global Anti-ViewOnce Enabled.');
             } else if (args[0] === 'off') {
-                settings.antiviewonce[jid] = false;
+                settings.antiviewonce = false;
                 saveSettings();
-                await sendWithLogo('❌ Spy Mode Disabled.');
+                await sendWithLogo('❌ Global Anti-ViewOnce Disabled.');
             }
             break;
 
         case 'antidelete':
         case 'antidel':
-            if (!isGroup(jid)) return sendWithLogo('❌ Groups only!');
             if (!args[0]) {
-                const current = settings.antidelete[jid];
-                settings.antidelete[jid] = !current;
+                settings.antidelete = !settings.antidelete;
                 saveSettings();
-                await sendWithLogo(settings.antidelete[jid] ? '✅ Anti-Delete Enabled.' : '❌ Anti-Delete Disabled.');
+                await sendWithLogo(settings.antidelete ? '✅ Global Anti-Delete Enabled.' : '❌ Global Anti-Delete Disabled.');
                 return;
             }
             if (args[0] === 'on') {
-                settings.antidelete[jid] = true;
+                settings.antidelete = true;
                 saveSettings();
-                await sendWithLogo('✅ Anti-Delete Enabled.');
+                await sendWithLogo('✅ Global Anti-Delete Enabled.');
             } else if (args[0] === 'off') {
-                settings.antidelete[jid] = false;
+                settings.antidelete = false;
                 saveSettings();
-                await sendWithLogo('❌ Anti-Delete Disabled.');
+                await sendWithLogo('❌ Global Anti-Delete Disabled.');
             }
             break;
 
@@ -469,25 +464,20 @@ Prefix: *${config.prefix}*
             break;
 
         case 'antispam':
-            if (!isGroup(jid)) return sendWithLogo('❌ Groups only!');
             if (!args[0]) {
-                const current = settings.antispam ? settings.antispam[jid] : false;
-                if (!settings.antispam) settings.antispam = {};
-                settings.antispam[jid] = !current;
+                settings.antispam = !settings.antispam;
                 saveSettings();
-                await sendWithLogo(settings.antispam[jid] ? '✅ Anti-Spam Enabled.' : '❌ Anti-Spam Disabled.');
+                await sendWithLogo(settings.antispam ? '✅ Global Anti-Spam Enabled.' : '❌ Global Anti-Spam Disabled.');
                 return;
             }
             if (args[0] === 'on') {
-                if (!settings.antispam) settings.antispam = {};
-                settings.antispam[jid] = true;
+                settings.antispam = true;
                 saveSettings();
-                await sendWithLogo('✅ Anti-Spam Enabled.');
+                await sendWithLogo('✅ Global Anti-Spam Enabled.');
             } else if (args[0] === 'off') {
-                if (!settings.antispam) settings.antispam = {};
-                settings.antispam[jid] = false;
+                settings.antispam = false;
                 saveSettings();
-                await sendWithLogo('❌ Anti-Spam Disabled.');
+                await sendWithLogo('❌ Global Anti-Spam Disabled.');
             }
             break;
 

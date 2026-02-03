@@ -21,12 +21,12 @@ const config = {
 
 // Application State (Shared)
 let settings = {
-    antilink: {}, // jid: true/false
-    welcome: {},  // jid: true/false
-    goodbye: {},   // jid: true/false
-    antiviewonce: {}, // jid: true/false (Passive Spy)
-    antidelete: {},    // jid: true/false
-    antispam: {},       // jid: true/false
+    antilink: false,   // Global Toggle
+    welcome: false,    // Global Toggle
+    goodbye: false,    // Global Toggle
+    antiviewonce: false, // Global Toggle (Passive Spy)
+    antidelete: false,  // Global Toggle
+    antispam: false,    // Global Toggle
     supportGroup: '',   // Dynamic Group Code
     supportChannel: '', // Dynamic Channel ID
     appUrl: '',         // Bot's own URL (For self-ping)
