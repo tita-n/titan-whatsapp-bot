@@ -47,13 +47,23 @@ app.post('/api/pair', async (req, res) => {
                 creds: state.creds,
                 keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
             },
-            browser: ["Ubuntu", "Chrome", "20.0.0"]
+            browser: Browsers.ubuntu('Chrome')
         });
 
         sock.ev.on('creds.update', saveCreds);
 
-        await delay(3000);
-        const code = await sock.requestPairingCode(cleanNumber);
+        console.log(`[TITAN GEN] Requesting pairing code for: ${cleanNumber}`);
+        // Wait for connection to stabilize
+        await delay(5000);
+
+        let code;
+        try {
+            code = await sock.requestPairingCode(cleanNumber);
+            console.log(`[TITAN GEN] Code generated: ${code}`);
+        } catch (err) {
+            console.error('[TITAN GEN] Pairing Request Failed:', err.message);
+            throw new Error('Failed to fetch pairing code from WhatsApp');
+        }
 
         pairingStates.set(sessionId, { sock, sessionDir, saveCreds, lastUpdate: Date.now() });
 
@@ -96,7 +106,7 @@ app.post('/api/qr', async (req, res) => {
                 creds: state.creds,
                 keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
             },
-            browser: ["Ubuntu", "Chrome", "20.0.0"]
+            browser: Browsers.ubuntu('Chrome')
         });
 
         sock.ev.on('creds.update', saveCreds);

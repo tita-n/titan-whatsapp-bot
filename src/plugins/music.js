@@ -1,29 +1,29 @@
 const { config } = require('../../utils');
-const { searchPiped, getPipedStream } = require('./media_api');
+const { searchPrince, downloadPrinceMp3 } = require('./princetech_api');
 
 async function handleMusic(sock, msg, jid, sender, query, sendWithLogo) {
     if (!query) return sendWithLogo(`❌ Usage: ${config.prefix}play [song name]`);
 
     try {
-        await sock.sendMessage(jid, { text: `🔍 *TITAN STEALTH:* Searching for \`${query}\`...` }, { quoted: msg });
+        await sock.sendMessage(jid, { text: `🔍 *TITAN PRINCE:* Searching for \`${query}\`...` }, { quoted: msg });
 
-        const video = await searchPiped(query);
-        if (!video) return sendWithLogo('❌ No results found. All Piped instances might be throttled.');
+        const video = await searchPrince(query);
+        if (!video) return sendWithLogo('❌ No results found. Prince API might be throttled.');
 
-        await sock.sendMessage(jid, { text: `🎧 *TITAN STEALTH:* Fetching audio stream...` }, { quoted: msg });
+        await sock.sendMessage(jid, { text: `🎧 *TITAN PRINCE:* Downloading \`${video.title}\`...` }, { quoted: msg });
 
-        const streamUrl = await getPipedStream(video.id, 'audio');
-        if (!streamUrl) return sendWithLogo('❌ Extraction failed. Video might be age-restricted or private.');
+        const downloadUrl = await downloadPrinceMp3(video.url);
+        if (!downloadUrl) return sendWithLogo('❌ Extraction failed. Video might be restricted or restricted by API.');
 
         await sock.sendMessage(jid, {
-            audio: { url: streamUrl },
+            audio: { url: downloadUrl },
             mimetype: 'audio/mpeg',
             fileName: `${video.title}.mp3`,
             ptt: false,
             contextInfo: {
                 externalAdReply: {
                     title: video.title,
-                    body: `Author: ${video.author} | Duration: ${video.duration}`,
+                    body: `Author: ${video.author} | Duration: ${video.duration} | Views: ${video.views}`,
                     mediaType: 2,
                     thumbnailUrl: video.thumbnail,
                     sourceUrl: video.url,
@@ -34,7 +34,7 @@ async function handleMusic(sock, msg, jid, sender, query, sendWithLogo) {
 
     } catch (e) {
         console.error('[TITAN MUSIC] Error:', e.message);
-        await sendWithLogo('❌ Stealth API Error. Piped instances might be down.');
+        await sendWithLogo('❌ Prince API Error. Engine might be down.');
     }
 }
 

@@ -125,12 +125,12 @@ async function startTitan() {
         },
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
-        browser: ["Ubuntu", "Chrome", "20.0.0"],
-        markOnlineOnConnect: false, // Prevent extra traffic on boot
-        connectTimeoutMs: 120000,   // Wait longer for slower nets
+        browser: Browsers.ubuntu('Chrome'),
+        markOnlineOnConnect: false,
+        connectTimeoutMs: 60000,
         keepAliveIntervalMs: 30000,
         syncFullHistory: false,
-        linkPreview: false,         // Huge speed boost
+        linkPreview: false,
         patchMessageBeforeSending: (message) => {
             const requiresPatch = !!(
                 message.buttonsMessage ||
@@ -154,6 +154,9 @@ async function startTitan() {
         }
     });
 
+    // --- CONNECTION FLAGS ---
+    let connectionLock = false;
+
     // --- KEEP ALIVE PING ---
     const keepAlive = setInterval(async () => {
         if (sock.user) {
@@ -174,20 +177,10 @@ async function startTitan() {
             try {
                 const axios = require('axios');
                 await axios.get(pingerUrl).catch(() => null);
-                console.log('[TITAN] Self-ping successful:', pingerUrl);
+                console.log('[TITAN] Self-ping success:', pingerUrl);
             } catch (e) { }
         }
-    }, 5 * 60 * 1000); // 5 minutes
-
-    // --- MEMORY CLEANUP (AUTO-WIPE DOWNLOADS) ---
-    setInterval(() => {
-        const fs = require('fs-extra');
-        try {
-            fs.emptyDirSync(config.downloadPath);
-            console.log('[TITAN] Download cache cleared.');
-        } catch (e) { }
-    }, 60 * 60 * 1000); // Hourly
-
+    }, 5 * 60 * 1000);
 
     sock.ev.on('creds.update', saveCreds);
 
@@ -252,10 +245,8 @@ async function startTitan() {
         }
     });
 
-    // Connection Logic (FIXED BRACES)
-    // --- TITAN PULSE: AUTO-BIO (PHASE 41) ---
+    // Connection Logic
     let pulseInterval;
-    let hasNotified = false;
     const startTime = Date.now();
     const startPulse = () => {
         if (pulseInterval) clearInterval(pulseInterval);
@@ -265,39 +256,33 @@ async function startTitan() {
                 const status = `TITAN AI Active 🛡️ | Uptime: ${uptime} | Prefix: ${config.prefix}`;
                 try {
                     await sock.updateProfileStatus(status);
-                    console.log(`[TITAN PULSE] Bio Updated: ${status}`);
-                } catch (e) {
-                    console.error('[TITAN PULSE] Failed to update bio:', e);
-                }
+                } catch (e) { }
             }
-        }, 60 * 60 * 1000); // Every 1 hour
+        }, 60 * 60 * 1000);
     };
 
     sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, qr } = update;
-        if (connection === 'open') {
-            startPulse();
-            if (!hasNotified) {
-                console.log('[TITAN] ✅ Connected!');
-                await sock.sendMessage(getOwnerJid(), { text: '[TITAN] System Online ⚡' });
-                hasNotified = true;
-            }
+        const { connection, lastDisconnect } = update;
 
-            // --- SESSION EXPORTER (Z-UX PHASE) ---
+        if (connection === 'open') {
+            if (connectionLock) return; // Prevent multiple notifications/syncs
+            connectionLock = true;
+
+            console.log('[TITAN] ✅ Connected successfully!');
+            startPulse();
+
+            await sock.sendMessage(getOwnerJid(), { text: '⚡ *TITAN SYSTEM ONLINE*\n\nConnection established safely. No more rolling restarts detected.' });
+
+            // --- SESSION EXPORTER ---
             if (!process.env.SESSION_ID) {
                 try {
                     const credsFile = path.join(config.authPath, 'creds.json');
                     if (fs.existsSync(credsFile)) {
                         const creds = fs.readFileSync(credsFile, 'utf-8');
                         const sessionString = Buffer.from(creds).toString('base64');
-
-                        // Message 1: Instruction
-                        await sock.sendMessage(getOwnerJid(), { text: `⚠️ *SAVE YOUR BOT'S MEMORY* ⚠️\n\nTo make me stay online 24/7 without needing to link again, follow these 2 steps:\n\n1. *Copy* the long code in the next message.\n2. Go to your Railway Settings -> *Variables*, click 'Add', type *SESSION_ID* as the name, and paste the code.\n\n_This prevents the bot from logging out!_` });
-
-                        // Message 2: The Key Alone (Easy to copy)
-                        await sock.sendMessage(getOwnerJid(), { text: sessionString });
+                        await sock.sendMessage(getOwnerJid(), { text: `⚠️ *SESSION BACKUP*\n\nSESSION_ID:\n\n${sessionString}` });
                     }
-                } catch (e) { console.error('[TITAN] Exporter Error:', e); }
+                } catch (e) { }
             }
 
             // --- AUTO-JOIN ---
@@ -305,29 +290,31 @@ async function startTitan() {
                 const groupCode = settings.supportGroup || config.supportGroup;
                 if (groupCode) await sock.groupAcceptInvite(groupCode);
             } catch (e) { }
-
-            try {
-                const channelId = settings.supportChannel || config.supportChannel;
-                if (channelId && sock.newsletterFollow) await sock.newsletterFollow(channelId);
-            } catch (e) { }
         }
 
         if (connection === 'close') {
+            connectionLock = false;
             const reason = lastDisconnect?.error?.output?.statusCode;
-            console.log(`[TITAN] Connection closed. Reason: ${reason}`);
-            const shouldReconnect = reason !== DisconnectReason.loggedOut && reason !== 401 && reason !== 405;
+            const msg = lastDisconnect?.error?.message || 'Unknown reason';
 
-            if (shouldReconnect) {
-                console.log('[TITAN] Reconnecting in 5s...');
+            console.log(`[TITAN] Connection closed: ${msg} (${reason})`);
+
+            // Handle Specific Fatal Reasons
+            const isUnauthorized = reason === DisconnectReason.loggedOut || reason === 401;
+            const isConflict = reason === DisconnectReason.connectionClosed || reason === 428;
+
+            if (isUnauthorized) {
+                console.error('[TITAN] SESSION EXPIRED: Deleting credentials...');
+                fs.emptyDirSync(config.authPath);
+                console.log('[TITAN] Please re-pair using the session generator or pairing code.');
+                // Don't auto-restart infinitely on 401
+                process.exit(1);
+            } else if (isConflict) {
+                console.log('[TITAN] Connection conflict. Reconnecting in 5s...');
                 setTimeout(() => startTitan(), 5000);
             } else {
-                if (reason === 401 || reason === 405) {
-                    fs.emptyDirSync(config.authPath);
-                    setTimeout(() => startTitan(), 2000);
-                } else {
-                    console.log('[TITAN] Session terminated. Manual intervention required.');
-                    process.exit(1);
-                }
+                console.log('[TITAN] Restarting script in 5s...');
+                setTimeout(() => startTitan(), 5000);
             }
         }
     });
