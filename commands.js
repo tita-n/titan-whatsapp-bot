@@ -148,6 +148,7 @@ Prefix: *${config.prefix}*
 *${config.prefix}sv* - Save Status (Reply)
 *${config.prefix}download [url]* - Media Downloader
 *${config.prefix}play [song]* - Play Music
+*${config.prefix}dl [link]* - Universal Downloader (IG/TT/YT/X)
 
 *💰 Economy*
 *${config.prefix}daily* - Claim points
@@ -628,38 +629,38 @@ _“Building the future, one line of code at a time.”_
             break;
 
         case 'download':
+        case 'dl':
         case 'd':
-            if (!args[0]) return sendWithLogo('❌ Please provide a link (TikTok, Instagram, YouTube, etc.)');
-            const url = args[0];
+            if (!args[0]) return sendWithLogo(`❌ Usage: ${config.prefix}dl [link]`);
+            const dlUrl = args[0];
             try {
-                await sock.sendMessage(jid, { text: '⏬ *Fetching media...* Please wait.' }, { quoted: msg });
-                const response = await axios.post('https://api.cobalt.tools/api/json', {
-                    url: url,
-                    videoQuality: '720',
-                    filenameStyle: 'basic'
-                }, {
-                    headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
-                });
-                const data = response.data;
-                if (data.status === 'error') return sendWithLogo(`❌ Cobalt Error: ${data.text}`);
-                if (data.status === 'stream' || data.status === 'picker' || data.status === 'redirect') {
-                    const downloadUrl = data.url;
-                    if (!downloadUrl) return sendWithLogo('❌ Could not get download URL.');
-                    const mediaRes = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
-                    const buffer = Buffer.from(mediaRes.data);
-                    const isImage = data.filename?.endsWith('.jpg') || data.filename?.endsWith('.png') || data.filename?.endsWith('.webp');
-                    const isAudio = data.filename?.endsWith('.mp3') || data.filename?.endsWith('.ogg');
-                    if (isImage) {
-                        await sock.sendMessage(jid, { image: buffer, caption: `✅ Downloaded: ${data.filename || 'Media'}` }, { quoted: msg });
-                    } else if (isAudio) {
-                        await sock.sendMessage(jid, { audio: buffer, mimetype: 'audio/mpeg', fileName: data.filename || 'Audio.mp3' }, { quoted: msg });
-                    } else {
-                        await sock.sendMessage(jid, { video: buffer, caption: `✅ Downloaded: ${data.filename || 'Video'}` }, { quoted: msg });
-                    }
+                await sock.sendMessage(jid, { text: '⏬ *TITAN ENGINE:* Fetching media from link...' }, { quoted: msg });
+                const { downloadMedia } = require('./src/plugins/ytdlp');
+                const filePath = await downloadMedia(dlUrl, 'video'); // Try video/best by default
+
+                if (!filePath) return sendWithLogo('❌ Failed to download. Link might be unsupported or private.');
+
+                const stats = fs.statSync(filePath);
+                if (stats.size > 100 * 1024 * 1024) { // 100MB limit for video
+                    fs.removeSync(filePath);
+                    return sendWithLogo('❌ Video too large (Limit: 100MB).');
                 }
+
+                const ext = path.extname(filePath).toLowerCase();
+                const caption = `✅ *Downloaded via TITAN Engine*\n🔗 *Source:* ${dlUrl}`;
+
+                if (['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) {
+                    await sock.sendMessage(jid, { image: { url: filePath }, caption }, { quoted: msg });
+                } else if (['.mp3', '.m4a', '.opus'].includes(ext)) {
+                    await sock.sendMessage(jid, { audio: { url: filePath }, mimetype: 'audio/mpeg', fileName: 'Titan_Audio.mp3' }, { quoted: msg });
+                } else {
+                    await sock.sendMessage(jid, { video: { url: filePath }, caption }, { quoted: msg });
+                }
+
+                fs.removeSync(filePath);
             } catch (e) {
-                console.error('[TITAN] Download Error:', e.response?.data || e.message);
-                sendWithLogo('❌ Failed to download. Service might be down.');
+                console.error('[TITAN DOWNLOAD] Error:', e);
+                await sendWithLogo('❌ Download failed. Engine throttled or unsupported link.');
             }
             break;
 
