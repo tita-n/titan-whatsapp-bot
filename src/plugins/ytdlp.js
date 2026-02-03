@@ -1,4 +1,4 @@
-const YTDlpWrap = require('yt-dlp-wrap-plus');
+const YTDlpWrap = require('yt-dlp-wrap-plus').default;
 const fs = require('fs-extra');
 const path = require('path');
 const { config } = require('../../utils');
