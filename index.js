@@ -184,8 +184,8 @@ async function startTitan() {
         },
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
-        // Use more realistic browser fingerprint
-        browser: Browsers.android('Chrome', '88.0.4324.181', 'Android 10'),
+        // Browser fingerprint - Ubuntu Chrome works with all Baileys versions
+        browser: Browsers.ubuntu('Chrome'),
         markOnlineOnConnect: false,
         syncFullHistory: false,
         linkPreview: false,
