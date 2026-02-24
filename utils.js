@@ -259,12 +259,37 @@ const getGroupAdmins = (participants) => {
 const isBotAdmin = async (sock, jid) => {
     try {
         const meta = await getCachedGroupMetadata(sock, jid);
-        if (!meta) return false;
+        if (!meta) {
+            console.log('[TITAN] isBotAdmin: No metadata returned');
+            return false;
+        }
         
-        const botJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
-        const admins = getGroupAdmins(meta.participants);
-        const isAdmin = admins.includes(botJid);
-        console.log(`[TITAN] Bot admin check for ${jid}: ${isAdmin}`);
+        if (!meta.participants || meta.participants.length === 0) {
+            console.log('[TITAN] isBotAdmin: No participants in metadata');
+            return false;
+        }
+        
+        // Bot JID - try multiple formats
+        const botFullJid = sock.user?.id; // e.g., "23480xxx:19@s.whatsapp.net"
+        const botShortJid = botFullJid ? botFullJid.split(':')[0] + '@s.whatsapp.net' : null;
+        
+        console.log(`[TITAN] isBotAdmin: Bot full JID: ${botFullJid}, short: ${botShortJid}`);
+        console.log(`[TITAN] isBotAdmin: Total participants: ${meta.participants.length}`);
+        
+        // Check participants - try both full JID and short JID
+        const botParticipant = meta.participants.find(p => 
+            p.id === botFullJid || 
+            p.id === botShortJid ||
+            p.id?.startsWith(botShortJid?.split('@')[0])
+        );
+        
+        if (!botParticipant) {
+            console.log('[TITAN] isBotAdmin: Bot not found in participants');
+            return false;
+        }
+        
+        const isAdmin = botParticipant.admin === 'admin' || botParticipant.admin === 'superadmin';
+        console.log(`[TITAN] isBotAdmin: Bot participant found, admin status: ${botParticipant.admin}, isAdmin: ${isAdmin}`);
         return isAdmin;
     } catch (e) {
         console.error('[TITAN] isBotAdmin error:', e);
