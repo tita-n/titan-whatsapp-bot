@@ -116,40 +116,8 @@ process.on('uncaughtException', (err) => {
     }
 });
 
-// Handle unhandled promise rejections (for Bad MAC errors inside Baileys)
-// Don't exit immediately - try graceful reconnect instead
-let sessionErrorCount = 0;
-process.on('unhandledRejection', (reason, promise) => {
-    const reasonStr = String(reason);
-    
-    // Only handle critical session errors
-    if (reasonStr.includes('Bad MAC') || reasonStr.includes('Unsupported state')) {
-        sessionErrorCount++;
-        console.error(`[TITAN] Session error ${sessionErrorCount}x: ${reasonStr.substring(0, 100)}`);
-        
-        // After 3+ session errors, wipe and exit
-        if (sessionErrorCount >= 3) {
-            console.error('[TITAN] Multiple session errors. Wiping auth and exiting...');
-            try {
-                fs.emptyDirSync(config.authPath);
-            } catch (e) { }
-            process.exit(1);
-        }
-        
-        // Otherwise try to reconnect gracefully
-        console.log('[TITAN] Attempting to reconnect...');
-        setTimeout(() => {
-            if (currentSock) {
-                try { currentSock.end(undefined); } catch(e) { }
-            }
-            setTimeout(() => startTitan(), 5000);
-        }, 2000);
-        return;
-    }
-    
-    // Non-critical errors - just log
-    console.error('[TITAN] Unhandled Rejection:', reasonStr.substring(0, 200));
-});
+// Don't handle unhandledRejection aggressively - Bad MAC errors during message processing are non-fatal
+// The bot will continue working even with these errors
 
 // Handle unhandled promise rejections (for Bad MAC errors inside Baileys)
 process.on('unhandledRejection', (reason, promise) => {
@@ -199,6 +167,7 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 // --- CONNECTION FLAGS (GLOBAL) ---
 let connectionLock = false;
 let reconnectAttempts = 0;
+let isFirstConnection = true; // Global - only send SYSTEM ONLINE once
 let lastDisconnectReason = null;
 const MAX_RECONNECT_ATTEMPTS = 5;
 
@@ -419,7 +388,6 @@ async function startTitan() {
 
     // Connection Logic
     let pulseInterval;
-    let isFirstConnection = true; // Track if this is first connect or reconnect
     const startTime = Date.now();
     const startPulse = () => {
         if (pulseInterval) clearInterval(pulseInterval);
