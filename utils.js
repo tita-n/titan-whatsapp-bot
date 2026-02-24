@@ -193,6 +193,7 @@ const isViewOnceStub = (msg) => {
 /**
  * Extract view-once message from ANY nested path
  * Handles: viewOnceMessage, viewOnceMessageV2, viewOnceMessageV2Extension, ephemeralMessage
+ * Also handles: videoMessage/imageMessage with viewOnce: true flag (NEW 2025!)
  * @param {Object} message - The message object
  * @returns {Object|null} The unwrapped message content or null
  */
@@ -224,6 +225,18 @@ const extractViewOnceContent = (message) => {
         } catch (e) {
             // Continue to next path
         }
+    }
+
+    // NEW 2025: Check for viewOnce flag INSIDE mediaMessage itself!
+    // WhatsApp now sends view-once as plain videoMessage/imageMessage with viewOnce: true
+    if (message.videoMessage?.viewOnce === true) {
+        return { videoMessage: message.videoMessage };
+    }
+    if (message.imageMessage?.viewOnce === true) {
+        return { imageMessage: message.imageMessage };
+    }
+    if (message.audioMessage?.viewOnce === true) {
+        return { audioMessage: message.audioMessage };
     }
     
     return null;
@@ -267,6 +280,27 @@ const getViewOnceInfo = (msg) => {
     };
 };
 
+/**
+ * Check if a message is view-once (including new 2025 viewOnce: true flag)
+ * @param {Object} msg - The message object
+ * @returns {boolean}
+ */
+const isViewOnceMessage = (msg) => {
+    if (!msg || !msg.message) return false;
+    const m = msg.message;
+    
+    // Check wrapped formats
+    if (m.viewOnceMessage || m.viewOnceMessageV2 || m.viewOnceMessageV2Extension) return true;
+    if (m.ephemeralMessage?.message?.viewOnceMessage || m.ephemeralMessage?.message?.viewOnceMessageV2) return true;
+    
+    // Check NEW 2025 format: viewOnce: true flag inside media
+    if (m.videoMessage?.viewOnce === true) return true;
+    if (m.imageMessage?.viewOnce === true) return true;
+    if (m.audioMessage?.viewOnce === true) return true;
+    
+    return false;
+};
+
 module.exports = {
     config,
     settings,
@@ -285,5 +319,6 @@ module.exports = {
     isViewOnceStub,
     extractViewOnceContent,
     detectViewOnceType,
-    getViewOnceInfo
+    getViewOnceInfo,
+    isViewOnceMessage
 };

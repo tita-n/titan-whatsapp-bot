@@ -392,8 +392,17 @@ Prefix: *${config.prefix}*
 
                 // FAILURE: No view-once content found
                 if (!viewOnceContent || !voType) {
+                    // Check if it's a regular media (not view-once)
+                    const isRegularMedia = quoted?.videoMessage || quoted?.imageMessage || quoted?.audioMessage;
+                    const hasVOFlag = quoted?.videoMessage?.viewOnce || quoted?.imageMessage?.viewOnce || quoted?.audioMessage?.viewOnce;
+                    
                     console.log('[TITAN VV] No view-once content. Quoted structure:', JSON.stringify(quoted || msg.message)?.slice(0, 500));
-                    await sendWithLogo('❌ Reply to a ViewOnce message (image/video/audio) that hasn\'t been opened yet.\n\n⚠️ If you already viewed it - too late, WhatsApp deletes it from the server.');
+                    
+                    if (isRegularMedia && !hasVOFlag) {
+                        await sendWithLogo('❌ That\'s a regular video/image, not a ViewOnce!\n\nViewOnce = disappears after 1 view\nRegular media = stays in chat');
+                    } else {
+                        await sendWithLogo('❌ Reply to a ViewOnce message (image/video/audio) that hasn\'t been opened yet.\n\n⚠️ If you already viewed it - too late, WhatsApp deletes it from the server.');
+                    }
                     break;
                 }
 
