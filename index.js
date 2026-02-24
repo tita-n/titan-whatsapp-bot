@@ -119,20 +119,6 @@ process.on('uncaughtException', (err) => {
 // Don't handle unhandledRejection aggressively - Bad MAC errors during message processing are non-fatal
 // The bot will continue working even with these errors
 
-// Handle unhandled promise rejections (for Bad MAC errors inside Baileys)
-process.on('unhandledRejection', (reason, promise) => {
-    const reasonStr = String(reason);
-    if (reasonStr.includes('Bad MAC') || reasonStr.includes('Unsupported state')) {
-        console.error('[TITAN RECOVERY] Session error detected. Wiping auth...');
-        try {
-            fs.emptyDirSync(config.authPath);
-            console.log('[TITAN] Auth wiped. Please provide new SESSION_ID.');
-        } catch (e) { }
-        process.exit(1);
-    }
-    console.error('[TITAN] Unhandled Rejection:', reason);
-});
-
 // ============================================================
 // GRACEFUL SHUTDOWN - Prevent 440 conflicts on restart/redeploy
 // ============================================================
