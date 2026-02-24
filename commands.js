@@ -2,7 +2,7 @@ const { downloadContentFromMessage, downloadMediaMessage } = require('@whiskeyso
 const axios = require('axios');
 const fs = require('fs-extra');
 const moment = require('moment');
-const { config, settings, saveSettings, getOwnerJid, isGroup, isChannel, getGroupAdmins, spamTracker, gameStore, getCachedGroupMetadata, isViewOnceStub, extractViewOnceContent, detectViewOnceType } = require('./utils');
+const { config, settings, saveSettings, getOwnerJid, isGroup, isChannel, getGroupAdmins, spamTracker, gameStore, getCachedGroupMetadata, isViewOnceStub, extractViewOnceContent, detectViewOnceType, isBotAdmin, getGroupSettings, updateGroupSettings, addStrike, getStrikes, clearStrikes } = require('./utils');
 
 // Plugins
 const { handleEconomy } = require('./src/plugins/economy');
@@ -15,30 +15,131 @@ const { handleTitanAI } = require('./src/plugins/titan_ai');
 
 const ADMIN_COMMANDS = [
     'mode', 'kick', 'remove', 'promote', 'demote', 'mute', 'close', 'unmute', 'open',
-    'antilink', 'welcome', 'goodbye', 'antiviewonce', 'antivv', 'antidelete', 'antidel',
+    'antilink', 'welcome', 'goodbye', 'antivviewonce', 'antivv', 'antidelete', 'antidel',
     'link', 'invite', 'revoke', 'reset', 'delete', 'del', 'broadcast', 'bc',
     'antispam', 'setgroup', 'setchannel', 'update', 'seturl', 'owner', 'restart'
 ];
 
-async function handleAntiLink(sock, msg, jid, text, sender) {
-    if (!settings.antilink) return false;
+// ============================================================
+// ANTI-LINK HANDLER - Multiple modes (delete/warn/kick)
+// ============================================================
 
-    const linkRegex = /chat\.whatsapp\.com\/[0-9A-Za-z]{20,}/i;
-    if (!linkRegex.test(text)) return false;
+// Comprehensive link regex - detects WhatsApp links, URLs, shorteners
+const LINK_PATTERNS = [
+    /https?:\/\/(chat\.whatsapp\.com|wa\.me|whatsapp\.com)\/[^\s]+/gi,
+    /https?:\/\/[^\s]+\.[^\s]{2,}\/[^\s]*/gi,
+    /(bit\.ly|tinyurl\.com|t\.co|goo\.gl|ow\.ly|is\.gd|buff\.ly|youtu\.be|instagram\.com|twitter\.com)\/[^\s]+/gi
+];
+
+async function detectLink(text) {
+    if (!text) return false;
+    for (const pattern of LINK_PATTERNS) {
+        if (pattern.test(text)) return true;
+    }
+    return false;
+}
+
+async function handleAntiLink(sock, msg, jid, text, sender) {
+    // Get per-group settings
+    const gs = getGroupSettings(jid);
+    
+    // Check if antilink is enabled for this group
+    if (!gs.antilink || gs.antilink.mode === 'off') {
+        return false;
+    }
+
+    // Check for links
+    if (!await detectLink(text)) {
+        return false;
+    }
+
+    console.log(`[TITAN ANTI-LINK] Link detected from ${sender} in ${jid}, mode: ${gs.antilink.mode}`);
 
     try {
+        // Check if sender is admin - bypass
         const meta = await getCachedGroupMetadata(sock, jid);
-        const admins = getGroupAdmins(meta.participants);
-        const botJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+        const admins = getGroupAdmins(meta?.participants || []);
+        
+        if (admins.includes(sender)) {
+            console.log(`[TITAN ANTI-LINK] User is admin, bypassing`);
+            return false;
+        }
 
-        if (admins.includes(sender)) return false; // Owner/Admin bypass
-        if (!admins.includes(botJid)) return false; // Bot not admin
+        // Check if bot is admin
+        const botIsAdmin = await isBotAdmin(sock, jid);
+        if (!botIsAdmin) {
+            console.log('[TITAN ANTI-LINK] Bot is not admin, cannot act');
+            return false;
+        }
 
-        await sock.sendMessage(jid, { delete: msg.key });
-        await sock.groupParticipantsUpdate(jid, [sender], 'remove');
-        return true;
+        const mode = gs.antilink.mode;
+        
+        // DELETE - Just delete the message
+        if (mode === 'delete') {
+            try {
+                await sock.sendMessage(jid, { delete: msg.key });
+                console.log('[TITAN ANTI-LINK] Link message deleted');
+            } catch (e) {
+                console.error('[TITAN ANTI-LINK] Delete failed:', e.message);
+            }
+            return true;
+        }
+        
+        // WARN - Delete + warn + track strikes
+        if (mode === 'warn') {
+            try {
+                await sock.sendMessage(jid, { delete: msg.key });
+            } catch (e) { }
+            
+            const strikeCount = addStrike(jid, sender);
+            const maxStrikes = 3;
+            
+            await sock.sendMessage(jid, { 
+                text: `⚠️ @${sender.split('@')[0]}, links are not allowed!\n\n🚫 Strike ${strikeCount}/${maxStrikes}`,
+                mentions: [sender]
+            });
+            
+            console.log(`[TITAN ANTI-LINK] User warned, strikes: ${strikeCount}`);
+            
+            // Kick if 3 strikes
+            if (strikeCount >= maxStrikes) {
+                try {
+                    await sock.groupParticipantsUpdate(jid, [sender], 'remove');
+                    await sock.sendMessage(jid, { 
+                        text: `🚫 @${sender.split('@')[0]} was removed for repeated link violations (3 strikes)`,
+                        mentions: [sender]
+                    });
+                    clearStrikes(jid, sender);
+                    console.log('[TITAN ANTI-LINK] User kicked due to 3 strikes');
+                } catch (e) {
+                    console.error('[TITAN ANTI-LINK] Kick failed:', e.message);
+                }
+            }
+            return true;
+        }
+        
+        // KICK - Delete + immediately kick
+        if (mode === 'kick') {
+            try {
+                await sock.sendMessage(jid, { delete: msg.key });
+            } catch (e) { }
+            
+            try {
+                await sock.groupParticipantsUpdate(jid, [sender], 'remove');
+                await sock.sendMessage(jid, { 
+                    text: `🚫 @${sender.split('@')[0]} was removed for posting links`,
+                    mentions: [sender]
+                });
+                console.log('[TITAN ANTI-LINK] User kicked');
+            } catch (e) {
+                console.error('[TITAN ANTI-LINK] Kick failed:', e.message);
+            }
+            return true;
+        }
+
+        return false;
     } catch (e) {
-        console.error('[TITAN] Antilink error:', e.message);
+        console.error('[TITAN ANTI-LINK] Error:', e.message);
         return false;
     }
 }
@@ -107,6 +208,10 @@ async function handleCommand(sock, msg, jid, sender, cmd, args, text, owner, cmd
     switch (cmd) {
         case 'menu':
         case 'help':
+            // Get per-group settings for menu display
+            const gs = isGroupChat ? getGroupSettings(jid) : null;
+            const antilinkStatus = gs?.antilink?.mode || 'off';
+            
             const menuText = `*🤖 COMMAND CENTER*
 Prefix: *${config.prefix}*
 
@@ -127,8 +232,9 @@ Prefix: *${config.prefix}*
 *${config.prefix}tagall [msg]* - Tag everyone
 *${config.prefix}hidetag [msg]* - Invisible tag
 *${config.prefix}broadcast [msg]* - Owner BC
-*${config.prefix}welcome [on/off]* - Auto welcome
-*${config.prefix}goodbye [on/off]* - Auto goodbye
+*${config.prefix}welcome [on/off/set msg]* - Auto welcome
+*${config.prefix}goodbye [on/off/set msg]* - Auto goodbye
+*${config.prefix}antilink [off/delete/warn/kick]* - Anti-link mode
 
 *👮‍♂️ Admin*
 *${config.prefix}kick [user]* - Remove user
@@ -137,7 +243,6 @@ Prefix: *${config.prefix}*
 *${config.prefix}mute* - Close group
 *${config.prefix}unmute* - Open group
 *${config.prefix}delete* - Delete message
-*${config.prefix}antilink [on/off]* - Auto-kick links
 
 *${config.prefix}sticker* - Create sticker
 *${config.prefix}toimage* - Sticker to Image
@@ -276,56 +381,110 @@ Prefix: *${config.prefix}*
             break;
 
         case 'antilink':
+            if (!isGroupChat) return sendWithLogo('❌ Groups only!');
+            
+            const gsAnti = getGroupSettings(jid);
+            
             if (!args[0]) {
-                settings.antilink = !settings.antilink;
-                saveSettings();
-                await sendWithLogo(settings.antilink ? '✅ Global Antilink Enabled.' : '❌ Global Antilink Disabled.');
+                const currentMode = gsAnti.antilink?.mode || 'off';
+                await sendWithLogo(`Current: *${currentMode.toUpperCase()}*\n\nModes:\n• \`off\` - Disabled\n• \`delete\` - Delete link only\n• \`warn\` - Warn + 3 strikes = kick\n• \`kick\` - Delete + kick immediately`);
                 return;
             }
-            if (args[0] === 'on') {
-                settings.antilink = true;
-                saveSettings();
-                await sendWithLogo('✅ Global Antilink Enabled.');
-            } else if (args[0] === 'off') {
-                settings.antilink = false;
-                saveSettings();
-                await sendWithLogo('❌ Global Antilink Disabled.');
+            
+            const mode = args[0].toLowerCase();
+            const validModes = ['off', 'delete', 'warn', 'kick'];
+            
+            if (!validModes.includes(mode)) {
+                await sendWithLogo(`❌ Invalid mode: ${args[0]}\n\nValid modes:\n• \`off\` - Disabled\n• \`delete\` - Delete link only\n• \`warn\` - Warn + 3 strikes = kick\n• \`kick\` - Delete + kick immediately`);
+                return;
             }
+            
+            // Check if bot is admin before enabling
+            if (mode !== 'off') {
+                const botAdmin = await isBotAdmin(sock, jid);
+                if (!botAdmin) {
+                    await sendWithLogo('❌ Bot needs to be admin to use antilink!\n\nMake bot admin first, then try again.');
+                    return;
+                }
+            }
+            
+            gsAnti.antilink = { mode, strikes: {} };
+            await updateGroupSettings(jid, 'antilink', gsAnti.antilink);
+            
+            const modeDesc = {
+                'off': 'Disabled',
+                'delete': 'Delete link only',
+                'warn': 'Warn + 3 strikes = kick',
+                'kick': 'Delete + kick immediately'
+            };
+            
+            await sendWithLogo(`✅ Antilink set to: *${mode.toUpperCase()}*\n\n${modeDesc[mode]}`);
+            console.log(`[TITAN] Antilink set to ${mode} for group ${jid}`);
             break;
 
         case 'welcome':
+            if (!isGroupChat) return sendWithLogo('❌ Groups only!');
+            
+            const gsWelcome = getGroupSettings(jid);
+            
             if (!args[0]) {
-                settings.welcome = !settings.welcome;
-                saveSettings();
-                await sendWithLogo(settings.welcome ? '✅ Global Welcome msg Enabled.' : '❌ Global Welcome msg Disabled.');
+                // Toggle
+                gsWelcome.welcome.enabled = !gsWelcome.welcome.enabled;
+                await updateGroupSettings(jid, 'welcome', gsWelcome.welcome);
+                await sendWithLogo(gsWelcome.welcome.enabled ? '✅ Welcome message Enabled for this group.' : '❌ Welcome message Disabled for this group.');
                 return;
             }
+            
             if (args[0] === 'on') {
-                settings.welcome = true;
-                saveSettings();
-                await sendWithLogo('✅ Global Welcome msg Enabled.');
+                gsWelcome.welcome.enabled = true;
+                gsWelcome.welcome.text = null;
+                await updateGroupSettings(jid, 'welcome', gsWelcome.welcome);
+                await sendWithLogo('✅ Welcome message Enabled.\n\nUse `.welcome set <message>` to customize.');
             } else if (args[0] === 'off') {
-                settings.welcome = false;
-                saveSettings();
-                await sendWithLogo('❌ Global Welcome msg Disabled.');
+                gsWelcome.welcome.enabled = false;
+                await updateGroupSettings(jid, 'welcome', gsWelcome.welcome);
+                await sendWithLogo('❌ Welcome message Disabled for this group.');
+            } else if (args[0] === 'set' && args.slice(1).length > 0) {
+                const customText = args.slice(1).join(' ');
+                gsWelcome.welcome.enabled = true;
+                gsWelcome.welcome.text = customText;
+                await updateGroupSettings(jid, 'welcome', gsWelcome.welcome);
+                await sendWithLogo(`✅ Welcome message updated!\n\nPreview:\n${customText.replace(/{user}/g, 'User').replace(/{group}/g, jid.split('@')[0]).replace(/{time}/g, new Date().toLocaleString())}\n\nPlaceholders: {user}, {group}, {time}`);
+            } else {
+                await sendWithLogo(`❌ Invalid usage!\n\nUsage:\n• \`${config.prefix}welcome on\` - Enable\n• \`${config.prefix}welcome off\` - Disable\n• \`${config.prefix}welcome set <message>\` - Custom message\n\nPlaceholders: {user}, {group}, {time}`);
             }
             break;
 
         case 'goodbye':
+            if (!isGroupChat) return sendWithLogo('❌ Groups only!');
+            
+            const gsGoodbye = getGroupSettings(jid);
+            
             if (!args[0]) {
-                settings.goodbye = !settings.goodbye;
-                saveSettings();
-                await sendWithLogo(settings.goodbye ? '✅ Global Goodbye msg Enabled.' : '❌ Global Goodbye msg Disabled.');
+                // Toggle
+                gsGoodbye.goodbye.enabled = !gsGoodbye.goodbye.enabled;
+                await updateGroupSettings(jid, 'goodbye', gsGoodbye.goodbye);
+                await sendWithLogo(gsGoodbye.goodbye.enabled ? '✅ Goodbye message Enabled for this group.' : '❌ Goodbye message Disabled for this group.');
                 return;
             }
+            
             if (args[0] === 'on') {
-                settings.goodbye = true;
-                saveSettings();
-                await sendWithLogo('✅ Global Goodbye msg Enabled.');
+                gsGoodbye.goodbye.enabled = true;
+                gsGoodbye.goodbye.text = null;
+                await updateGroupSettings(jid, 'goodbye', gsGoodbye.goodbye);
+                await sendWithLogo('✅ Goodbye message Enabled.\n\nUse \`.goodbye set <message>\` to customize.');
             } else if (args[0] === 'off') {
-                settings.goodbye = false;
-                saveSettings();
-                await sendWithLogo('❌ Global Goodbye msg Disabled.');
+                gsGoodbye.goodbye.enabled = false;
+                await updateGroupSettings(jid, 'goodbye', gsGoodbye.goodbye);
+                await sendWithLogo('❌ Goodbye message Disabled for this group.');
+            } else if (args[0] === 'set' && args.slice(1).length > 0) {
+                const customText = args.slice(1).join(' ');
+                gsGoodbye.goodbye.enabled = true;
+                gsGoodbye.goodbye.text = customText;
+                await updateGroupSettings(jid, 'goodbye', gsGoodbye.goodbye);
+                await sendWithLogo(`✅ Goodbye message updated!\n\nPreview:\n${customText.replace(/{user}/g, 'User').replace(/{group}/g, jid.split('@')[0]).replace(/{time}/g, new Date().toLocaleString())}\n\nPlaceholders: {user}, {group}, {time}`);
+            } else {
+                await sendWithLogo(`❌ Invalid usage!\n\nUsage:\n• \`${config.prefix}goodbye on\` - Enable\n• \`${config.prefix}goodbye off\` - Disable\n• \`${config.prefix}goodbye set <message>\` - Custom message\n\nPlaceholders: {user}, {group}, {time}`);
             }
             break;
 

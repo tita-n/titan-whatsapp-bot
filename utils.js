@@ -46,6 +46,10 @@ const gameStore = new Map();
 
 const settingsPath = path.join(config.dataPath, 'settings.json');
 const msgStorePath = path.join(config.dataPath, 'messages.json');
+const groupSettingsPath = path.join(config.dataPath, 'groups.json');
+
+// Group Settings Store (per-group settings)
+let groupSettings = {};
 
 const saveSettings = async () => {
     try {
@@ -66,6 +70,76 @@ const loadSettings = () => {
         console.error('[TITAN] Failed to load settings:', e);
     }
 };
+
+const loadGroupSettings = () => {
+    try {
+        if (fs.existsSync(groupSettingsPath)) {
+            groupSettings = fs.readJsonSync(groupSettingsPath);
+            console.log(`[TITAN] Group settings loaded: ${Object.keys(groupSettings).length} groups`);
+        }
+    } catch (e) {
+        console.error('[TITAN] Failed to load group settings:', e);
+    }
+};
+
+const saveGroupSettings = async () => {
+    try {
+        await fs.writeJson(groupSettingsPath, groupSettings, { spaces: 2 });
+    } catch (e) {
+        console.error('[TITAN] Failed to save group settings:', e);
+    }
+};
+
+const getGroupSettings = (jid) => {
+    if (!groupSettings[jid]) {
+        groupSettings[jid] = {
+            welcome: { enabled: false, text: null },
+            goodbye: { enabled: false, text: null },
+            antilink: { mode: 'off', strikes: {} } // mode: off/delete/warn/kick
+        };
+    }
+    return groupSettings[jid];
+};
+
+const updateGroupSettings = async (jid, key, value) => {
+    const gs = getGroupSettings(jid);
+    gs[key] = value;
+    await saveGroupSettings();
+};
+
+// Anti-link strike tracker
+const antilinkStrikes = new Map(); // jid_user -> { count, lastWarn }
+
+const getStrikeKey = (jid, user) => `${jid}_${user}`;
+
+const addStrike = (jid, user) => {
+    const key = getStrikeKey(jid, user);
+    const strikes = antilinkStrikes.get(key) || { count: 0, lastWarn: 0 };
+    strikes.count++;
+    strikes.lastWarn = Date.now();
+    antilinkStrikes.set(key, strikes);
+    return strikes.count;
+};
+
+const getStrikes = (jid, user) => {
+    const key = getStrikeKey(jid, user);
+    return antilinkStrikes.get(key)?.count || 0;
+};
+
+const clearStrikes = (jid, user) => {
+    const key = getStrikeKey(jid, user);
+    antilinkStrikes.delete(key);
+};
+
+// Clean old strikes every 30 minutes
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, data] of antilinkStrikes.entries()) {
+        if (now - data.lastWarn > 30 * 60 * 1000) { // 30 mins
+            antilinkStrikes.delete(key);
+        }
+    }
+}, 5 * 60 * 1000);
 
 const saveMsgStore = async () => {
     try {
@@ -104,6 +178,7 @@ process.on('SIGTERM', () => {
 
 // Auto-load on require
 loadSettings();
+loadGroupSettings();
 loadMsgStore();
 
 // Helpers
@@ -173,6 +248,37 @@ const getCachedGroupMetadata = async (sock, jid) => {
 
 const getGroupAdmins = (participants) => {
     return participants.filter(p => p.admin === 'admin' || p.admin === 'superadmin').map(p => p.id);
+};
+
+/**
+ * Check if bot is admin in a group
+ * @param {Object} sock - Baileys socket
+ * @param {string} jid - Group JID
+ * @returns {Promise<boolean>}
+ */
+const isBotAdmin = async (sock, jid) => {
+    try {
+        const meta = await getCachedGroupMetadata(sock, jid);
+        if (!meta) return false;
+        
+        const botJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+        const admins = getGroupAdmins(meta.participants);
+        const isAdmin = admins.includes(botJid);
+        console.log(`[TITAN] Bot admin check for ${jid}: ${isAdmin}`);
+        return isAdmin;
+    } catch (e) {
+        console.error('[TITAN] isBotAdmin error:', e);
+        return false;
+    }
+};
+
+/**
+ * Check if a user is admin in a group
+ */
+const isUserAdmin = (sock, jid, userJid, participants) => {
+    if (!participants) return false;
+    const admins = getGroupAdmins(participants);
+    return admins.includes(userJid);
 };
 
 // ============================================================
@@ -315,6 +421,17 @@ module.exports = {
     getMessageText,
     getGroupAdmins,
     getCachedGroupMetadata,
+    isBotAdmin,
+    isUserAdmin,
+    // Group settings
+    groupSettings,
+    getGroupSettings,
+    updateGroupSettings,
+    // Anti-link strikes
+    antilinkStrikes,
+    addStrike,
+    getStrikes,
+    clearStrikes,
     // View Once helpers
     isViewOnceStub,
     extractViewOnceContent,

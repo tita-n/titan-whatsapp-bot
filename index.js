@@ -11,7 +11,7 @@ const pino = require('pino');
 const path = require('path');
 
 // Modules
-const { config, isOwner, isGroup, isChannel, getMessageText, getOwnerJid, settings, saveSettings, msgStore, spamTracker, gameStore, getCachedGroupMetadata, isViewOnceStub, getViewOnceInfo } = require('./utils');
+const { config, isOwner, isGroup, isChannel, getMessageText, getOwnerJid, settings, saveSettings, msgStore, spamTracker, gameStore, getCachedGroupMetadata, isViewOnceStub, getViewOnceInfo, isBotAdmin, getGroupSettings } = require('./utils');
 const cron = require('node-cron');
 
 // --- DYNAMIC COMMAND LOADER (PHASE 17) ---
@@ -196,39 +196,85 @@ async function startTitan() {
 
     sock.ev.on('creds.update', saveCreds);
 
-    // Group Participants Update (Welcome/Goodbye)
+    // ============================================================
+    // GROUP PARTICIPANTS UPDATE - Welcome/Goodbye (PER-GROUP)
+    // ============================================================
     sock.ev.on('group-participants.update', async (update) => {
         try {
             const { id, participants, action } = update;
             console.log(`[TITAN] Group Event: ${id} | Action: ${action}`);
 
-            if (action === 'add' && settings.welcome) {
+            // Get per-group settings
+            const gs = getGroupSettings(id);
+            const botJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+
+            // WELCOME - New member added
+            if (action === 'add' && gs.welcome?.enabled) {
                 let groupName = 'Group';
                 try {
                     const meta = await getCachedGroupMetadata(sock, id);
                     if (meta) {
                         groupName = meta.subject;
-                        if (participants.includes(sock.user.id.split(':')[0] + '@s.whatsapp.net')) return;
                     }
-                } catch (e) { }
+                } catch (e) { 
+                    console.log('[TITAN] Welcome: Could not get group metadata:', e.message);
+                }
+
+                // Skip if bot was added
+                if (participants.includes(botJid)) {
+                    console.log('[TITAN] Welcome: Bot was added, skipping');
+                    return;
+                }
 
                 for (const participant of participants) {
-                    const text = `Welcome @${participant.split('@')[0]} to *${groupName}*! 👋\nRead the description to stay safe.`;
-                    const ppUrl = await sock.profilePictureUrl(participant, 'image').catch(() => null);
+                    // Skip if participant is bot
+                    if (participant.includes(botJid.split('@')[0])) continue;
 
-                    if (ppUrl) {
-                        sock.sendMessage(id, { image: { url: ppUrl }, caption: text, mentions: [participant] }).catch(() => { });
-                    } else {
-                        sock.sendMessage(id, { text, mentions: [participant] }).catch(() => { });
+                    // Process placeholders
+                    let text = gs.welcome.text || 'Welcome @{user} to *{group}*! 👋';
+                    text = text
+                        .replace(/{user}/g, participant.split('@')[0])
+                        .replace(/{group}/g, groupName)
+                        .replace(/{time}/g, new Date().toLocaleString());
+
+                    try {
+                        const ppUrl = await sock.profilePictureUrl(participant, 'image').catch(() => null);
+                        if (ppUrl) {
+                            await sock.sendMessage(id, { image: { url: ppUrl }, caption: text, mentions: [participant] });
+                        } else {
+                            await sock.sendMessage(id, { text, mentions: [participant] });
+                        }
+                        console.log(`[TITAN] Welcome sent to @${participant.split('@')[0]}`);
+                    } catch (e) {
+                        console.error('[TITAN] Welcome send error:', e.message);
                     }
                 }
             }
 
-            if (action === 'remove' && settings.goodbye) {
+            // GOODBYE - Member removed
+            if (action === 'remove' && gs.goodbye?.enabled) {
+                // Skip if bot was removed
+                if (participants.includes(botJid)) {
+                    console.log('[TITAN] Goodbye: Bot was removed');
+                    return;
+                }
+
                 for (const participant of participants) {
-                    if (participant.includes(sock.user.id.split(':')[0] + '@s.whatsapp.net')) return;
-                    const text = `Goodbye @${participant.split('@')[0]} 👋`;
-                    sock.sendMessage(id, { text, mentions: [participant] }).catch(() => { });
+                    if (participant.includes(botJid.split('@')[0])) continue;
+
+                    // Process placeholders
+                    let text = gs.goodbye.text || 'Goodbye @{user} 👋';
+                    text = text
+                        .replace(/{user}/g, participant.split('@')[0])
+                        .replace(/{group}/g, 'Group')
+                        .replace(/{time}/g, new Date().toLocaleString());
+
+                    try {
+                        await sock.sendMessage(id, { text, mentions: [participant] });
+                        console.log(`[TITAN] Goodbye sent to @${participant.split('@')[0]}`);
+                    } catch (e) {
+                        console.error('[TITAN] Goodbye send error:', e.message);
+                    }
                 }
             }
 
