@@ -17,7 +17,7 @@ const ADMIN_COMMANDS = [
     'mode', 'kick', 'remove', 'promote', 'demote', 'mute', 'close', 'unmute', 'open',
     'antilink', 'welcome', 'goodbye', 'antivviewonce', 'antivv', 'antidelete', 'antidel',
     'link', 'invite', 'revoke', 'reset', 'delete', 'del', 'broadcast', 'bc',
-    'antispam', 'setgroup', 'setchannel', 'update', 'seturl', 'owner', 'restart'
+    'antispam', 'setgroup', 'setchannel', 'update', 'seturl', 'owner', 'restart', 'reset-session', 'resetsession'
 ];
 
 // ============================================================
@@ -297,6 +297,7 @@ Prefix: *${config.prefix}*
 *${config.prefix}uptime* - System uptime
 *${config.prefix}update* - Flash update (Zero Downtime)
 *${config.prefix}restart* - Force reboot
+*${config.prefix}reset-session* - Wipe session & restart
 
 *🛡️ Global Shields*
 • Antilink: ${settings.antilink ? '✅' : '❌'}
@@ -953,6 +954,23 @@ _“Building the future, one line of code at a time.”_
         case 'restart':
             if (!owner) return;
             await sendWithLogo('🔄 *Rebooting core...* See you in 5 seconds.');
+            process.exit(0);
+            break;
+        
+        case 'reset-session':
+        case 'resetsession':
+            if (!owner) return;
+            await sendWithLogo('⚠️ *SESSION RESET*\n\nWiping auth folder and requesting new session...\n\n⚠️ You will need to provide a NEW SESSION_ID after this!');
+            try {
+                const fs = require('fs-extra');
+                const path = require('path');
+                const authPath = './auth_info';
+                fs.emptyDirSync(authPath);
+                console.log('[TITAN] Session wiped. Restarting...');
+                await sendWithLogo('✅ Session wiped. Restart bot and provide new SESSION_ID.');
+            } catch (e) {
+                await sendWithLogo(`❌ Reset failed: ${e.message}`);
+            }
             process.exit(0);
             break;
 

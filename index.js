@@ -116,22 +116,65 @@ process.on('uncaughtException', (err) => {
     }
 });
 
+// ============================================================
+// GRACEFUL SHUTDOWN - Prevent 440 conflicts on restart/redeploy
+// ============================================================
+
+// Global socket reference for graceful logout
+let currentSock = null;
+let isShuttingDown = false;
+
+async function gracefulShutdown(signal) {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    
+    console.log(`[TITAN] Received ${signal}. Performing graceful logout...`);
+    
+    if (currentSock) {
+        try {
+            await currentSock.logout();
+            console.log('[TITAN] Graceful logout successful. Old connection invalidated.');
+        } catch (e) {
+            console.log('[TITAN] Graceful logout error (can be ignored):', e.message);
+        }
+    }
+    
+    process.exit(0);
+}
+
+// Listen for shutdown signals (Render/Railway sends SIGTERM)
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 // Main
 // --- CONNECTION FLAGS (GLOBAL) ---
 let connectionLock = false;
 let reconnectAttempts = 0;
+let lastDisconnectReason = null;
 const MAX_RECONNECT_ATTEMPTS = 5;
+
+// Exponential backoff: 30s, 60s, 120s, 240s, 480s
+const getBackoffDelay = (attempt) => {
+    const baseDelay = 30000; // 30 seconds
+    const delay = baseDelay * Math.pow(2, attempt);
+    console.log(`[TITAN] Exponential backoff: ${delay/1000}s for attempt ${attempt + 1}`);
+    return delay;
+};
 
 async function startTitan() {
     console.log('[TITAN] Starting...');
     
-    // --- DEPLOY FIX: Wait for old instance to die ---
-    // On redeploy, old instance might still be connected. Wait before starting.
-    await new Promise(resolve => setTimeout(resolve, 10000));
-    console.log('[TITAN] Startup delay complete, connecting...');
+    // On first start, wait a bit to let any old instance die
+    if (reconnectAttempts === 0) {
+        console.log('[TITAN] First connection attempt, waiting 10s for any old instance to die...');
+        await new Promise(resolve => setTimeout(resolve, 10000));
+    }
     
     const { state, saveCreds } = await useMultiFileAuthState(config.authPath);
+    
+    // Use stable Baileys version to reduce protocol detection
     const { version } = await fetchLatestBaileysVersion();
+    console.log(`[TITAN] Using Baileys version: ${version.join('.')}`);
 
     const sock = makeWASocket({
         version,
@@ -141,12 +184,18 @@ async function startTitan() {
         },
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
-        browser: Browsers.ubuntu('Chrome'),
+        // Use more realistic browser fingerprint
+        browser: Browsers.android('Chrome', '88.0.4324.181', 'Android 10'),
         markOnlineOnConnect: false,
         syncFullHistory: false,
         linkPreview: false,
         connectTimeoutMs: 60000,
         keepAliveIntervalMs: 30000,
+        // Custom reconnect logic - don't let Baileys auto-reconnect
+        shouldRetry: (err) => {
+            console.log('[TITAN] shouldRetry called:', err?.message);
+            return false; // We handle reconnection manually
+        },
         getMessage: async (key) => {
             if (msgStore) {
                 const stored = msgStore.get(key.id);
@@ -176,6 +225,9 @@ async function startTitan() {
             return message;
         }
     });
+    
+    // Store socket reference for graceful shutdown
+    currentSock = sock;
 
     // --- KEEP ALIVE PING ---
     const keepAlive = setInterval(async () => {
@@ -340,6 +392,12 @@ async function startTitan() {
             // Only send welcome message on FIRST connection, not on reconnect
             if (connectionLock) return; // Prevent multiple notifications
             connectionLock = true;
+            
+            // Reset reconnect attempts on successful connection
+            if (reconnectAttempts > 0) {
+                console.log(`[TITAN] Connection restored after ${reconnectAttempts} reconnection attempts`);
+            }
+            reconnectAttempts = 0;
 
             console.log('[TITAN] ✅ Connected successfully!');
             startPulse();
@@ -375,38 +433,56 @@ async function startTitan() {
             connectionLock = false;
             const reason = lastDisconnect?.error?.output?.statusCode;
             const msg = lastDisconnect?.error?.message || 'Unknown reason';
-
-            console.log(`[TITAN] Connection Issue: ${msg} (${reason})`);
+            
+            console.log(`[TITAN] Connection closed: ${msg} (Code: ${reason})`);
 
             // --- SESSION RECOVERY (SELF-HEAL) ---
             const isUnauthorized = reason === DisconnectReason.loggedOut || reason === 401;
             const isConflict = reason === DisconnectReason.connectionClosed || reason === 428 || reason === 440;
-
-            if (isUnauthorized) {
-                console.error('[TITAN] SESSION EXPIRED: Deleting credentials...');
+            const isRestartRequired = reason === DisconnectReason.restartRequired || reason === 515;
+            
+            // 401/403 - Session expired/invalid - DELETE auth and restart fresh
+            if (isUnauthorized || reason === 403) {
+                console.error('[TITAN] SESSION EXPIRED/INVALID: Deleting credentials...');
                 fs.emptyDirSync(config.authPath);
-                console.log('[TITAN] Please re-pair using the session generator or pairing code.');
+                console.log('[TITAN] Auth wiped. Please provide new SESSION_ID or re-pair.');
                 process.exit(1);
-            } else if (isConflict) {
+            }
+            
+            // 440 Conflict - Old instance still connected - Exponential backoff
+            if (isConflict) {
                 reconnectAttempts++;
-                console.log(`[TITAN] Conflict detected. Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
                 
-                // If too many conflicts, wipe session and restart fresh
                 if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-                    console.log('[TITAN] Too many conflicts. Wiping session and restarting fresh...');
+                    console.log('[TITAN] Max reconnect attempts reached. Wiping session...');
                     fs.emptyDirSync(config.authPath);
                     reconnectAttempts = 0;
+                    console.log('[TITAN] Session wiped. Restarting with fresh session...');
+                    setTimeout(() => startTitan(), 5000);
+                    return;
                 }
                 
-                // Wait longer for old instance to die
-                const waitTime = 30000 + (reconnectAttempts * 10000); // 30s, 40s, 50s...
-                console.log(`[TITAN] Waiting ${waitTime/1000}s for old instance to die...`);
-                setTimeout(() => startTitan(), waitTime);
-            } else {
-                // Normal disconnect - wait and reconnect
-                console.log('[TITAN] Restarting script in 5s...');
-                setTimeout(() => startTitan(), 5000);
+                // Exponential backoff: 30s, 60s, 120s, 240s, 480s
+                const delay = getBackoffDelay(reconnectAttempts - 1);
+                console.log(`[TITAN] 440 Conflict: Waiting ${delay/1000}s before retry (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+                console.log('[TITAN] Tip: Wait longer between redeploys, or ensure old instance is fully stopped');
+                
+                setTimeout(() => startTitan(), delay);
+                return;
             }
+            
+            // 515 - Restart required - Immediate reconnect
+            if (isRestartRequired) {
+                console.log('[TITAN] Restart required (515). Reconnecting immediately...');
+                setTimeout(() => startTitan(), 2000);
+                return;
+            }
+
+            // Other errors - Normal reconnect with backoff
+            reconnectAttempts++;
+            const delay = reconnectAttempts <= MAX_RECONNECT_ATTEMPTS ? getBackoffDelay(reconnectAttempts - 1) : 60000;
+            console.log(`[TITAN] Connection error. Reconnecting in ${delay/1000}s...`);
+            setTimeout(() => startTitan(), delay);
         }
     });
 
