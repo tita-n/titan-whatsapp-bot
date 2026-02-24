@@ -48,6 +48,11 @@ async function handleAntiLink(sock, msg, jid, text, sender) {
         return false;
     }
 
+    // Skip if no text (media-only messages without caption)
+    if (!text || text.trim() === '') {
+        return false;
+    }
+
     // Check for links
     if (!await detectLink(text)) {
         return false;

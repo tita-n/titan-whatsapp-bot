@@ -119,9 +119,17 @@ process.on('uncaughtException', (err) => {
 // Main
 // --- CONNECTION FLAGS (GLOBAL) ---
 let connectionLock = false;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
 
 async function startTitan() {
     console.log('[TITAN] Starting...');
+    
+    // --- DEPLOY FIX: Wait for old instance to die ---
+    // On redeploy, old instance might still be connected. Wait before starting.
+    await new Promise(resolve => setTimeout(resolve, 10000));
+    console.log('[TITAN] Startup delay complete, connecting...');
+    
     const { state, saveCreds } = await useMultiFileAuthState(config.authPath);
     const { version } = await fetchLatestBaileysVersion();
 
@@ -380,9 +388,20 @@ async function startTitan() {
                 console.log('[TITAN] Please re-pair using the session generator or pairing code.');
                 process.exit(1);
             } else if (isConflict) {
-                // Conflict = old instance still connected. Wait LONGER (30s) for old session to die
-                console.log('[TITAN] Conflict detected. Waiting 30s for old instance to die...');
-                setTimeout(() => startTitan(), 30000);
+                reconnectAttempts++;
+                console.log(`[TITAN] Conflict detected. Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
+                
+                // If too many conflicts, wipe session and restart fresh
+                if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                    console.log('[TITAN] Too many conflicts. Wiping session and restarting fresh...');
+                    fs.emptyDirSync(config.authPath);
+                    reconnectAttempts = 0;
+                }
+                
+                // Wait longer for old instance to die
+                const waitTime = 30000 + (reconnectAttempts * 10000); // 30s, 40s, 50s...
+                console.log(`[TITAN] Waiting ${waitTime/1000}s for old instance to die...`);
+                setTimeout(() => startTitan(), waitTime);
             } else {
                 // Normal disconnect - wait and reconnect
                 console.log('[TITAN] Restarting script in 5s...');
