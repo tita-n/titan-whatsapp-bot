@@ -381,7 +381,7 @@ Prefix: *${config.prefix}*
             break;
 
         case 'antilink':
-            if (!isGroupChat) return sendWithLogo('❌ Groups only!');
+            if (!isGroup(jid)) return sendWithLogo('❌ Groups only!');
             
             const gsAnti = getGroupSettings(jid);
             
@@ -423,7 +423,7 @@ Prefix: *${config.prefix}*
             break;
 
         case 'welcome':
-            if (!isGroupChat) return sendWithLogo('❌ Groups only!');
+            if (!isGroup(jid)) return sendWithLogo('❌ Groups only!');
             
             const gsWelcome = getGroupSettings(jid);
             
@@ -456,7 +456,7 @@ Prefix: *${config.prefix}*
             break;
 
         case 'goodbye':
-            if (!isGroupChat) return sendWithLogo('❌ Groups only!');
+            if (!isGroup(jid)) return sendWithLogo('❌ Groups only!');
             
             const gsGoodbye = getGroupSettings(jid);
             
