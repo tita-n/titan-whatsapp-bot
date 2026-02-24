@@ -209,7 +209,7 @@ async function handleCommand(sock, msg, jid, sender, cmd, args, text, owner, cmd
         case 'menu':
         case 'help':
             // Get per-group settings for menu display
-            const gs = isGroupChat ? getGroupSettings(jid) : null;
+            const gs = isGroup(jid) ? getGroupSettings(jid) : null;
             const antilinkStatus = gs?.antilink?.mode || 'off';
             
             const menuText = `*🤖 COMMAND CENTER*
