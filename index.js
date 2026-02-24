@@ -11,7 +11,7 @@ const pino = require('pino');
 const path = require('path');
 
 // Modules
-const { config, isOwner, isGroup, isChannel, getMessageText, getOwnerJid, settings, saveSettings, msgStore, spamTracker, gameStore, getCachedGroupMetadata } = require('./utils');
+const { config, isOwner, isGroup, isChannel, getMessageText, getOwnerJid, settings, saveSettings, msgStore, spamTracker, gameStore, getCachedGroupMetadata, isViewOnceStub, getViewOnceInfo } = require('./utils');
 const cron = require('node-cron');
 
 // --- DYNAMIC COMMAND LOADER (PHASE 17) ---
@@ -362,15 +362,40 @@ async function startTitan() {
         for (const msg of messages) {
             try {
                 const jid = msg.key.remoteJid;
+                const fromMe = msg.key.fromMe;
+                
                 if (jid === 'status@broadcast' && settings.ghost) {
                     sock.readMessages([msg.key]).catch(() => { });
                     console.log(`[TITAN GHOST] Status viewed from: ${msg.pushName || 'Someone'}`);
                     continue;
                 }
 
+                // --- AUTO ANTI-VIEWONCE (PHASE ANTI-VV) ---
+                // Must check BEFORE storing message - view-once media only available before viewing!
+                if (settings.antivviewonce && !fromMe) {
+                    const voInfo = getViewOnceInfo(msg);
+                    if (voInfo) {
+                        console.log(`[TITAN ANTI-VV] View once detected! Type: ${voInfo.type} from @${voInfo.sender.split('@')[0]}`);
+                        try {
+                            const buffer = await downloadMediaMessage(msg, 'buffer', {});
+                            const caption = `🕵️ *ANTI-VIEWONCE CATCH*\n\n👤 From: @${voInfo.sender.split('@')[0]}\n💬 Chat: ${voInfo.jid}\n⏰ Time: ${new Date(voInfo.timestamp * 1000).toLocaleString()}\n📎 Type: ${voInfo.type.toUpperCase()}`;
+                            
+                            if (voInfo.type === 'image') {
+                                await sock.sendMessage(getOwnerJid(), { image: buffer, caption, mentions: [voInfo.sender] });
+                            } else if (voInfo.type === 'video') {
+                                await sock.sendMessage(getOwnerJid(), { video: buffer, caption, mentions: [voInfo.sender] });
+                            } else if (voInfo.type === 'audio') {
+                                await sock.sendMessage(getOwnerJid(), { audio: buffer, caption: caption.replace(voInfo.type.toUpperCase(), 'AUDIO 🎤'), mentions: [voInfo.sender] });
+                            }
+                            console.log(`[TITAN ANTI-VV] Forwarded to owner successfully`);
+                        } catch (vvErr) {
+                            console.error('[TITAN ANTI-VV] Failed to capture:', vvErr.message);
+                        }
+                    }
+                }
+
                 if (!msg.message) continue;
 
-                const fromMe = msg.key.fromMe;
                 const sender = fromMe ? (sock.user.id.split(':')[0] + '@s.whatsapp.net') : (msg.key.participant || jid);
                 const text = getMessageText(msg).trim();
 
@@ -386,27 +411,6 @@ async function startTitan() {
                     settings.ownerJid = sender;
                     saveSettings();
                     sock.sendMessage(jid, { text: `🎉 *TITAN CONNECTED!*\n\nYou have been auto-detected as the **OWNER**. \n\nCommands are now locked to you. Type *${config.prefix}menu* to begin!` }).catch(() => { });
-                }
-
-                // --- PASSIVE ANTI-VIEWONCE (NON-BLOCKING) ---
-                if (settings.antiviewonce) {
-                    const viewOnceMsg = msg.message.viewOnceMessage || msg.message.viewOnceMessageV2 ||
-                        msg.message.viewOnceMessageV2Extension || msg.message.ephemeralMessage?.message?.viewOnceMessageV2;
-                    if (viewOnceMsg) {
-                        (async () => {
-                            try {
-                                const buffer = await downloadMediaMessage(msg, 'buffer', {});
-                                const content = viewOnceMsg.message || viewOnceMsg;
-                                const mediaType = Object.keys(content).find(k => k.endsWith('Message'));
-                                const caption = `🕵️ *Anti-ViewOnce Spy*\nSource: ${jid}\nSender: @${sender.split('@')[0]}`;
-                                if (mediaType.includes('image')) {
-                                    await sock.sendMessage(getOwnerJid(), { image: buffer, caption, mentions: [sender] });
-                                } else if (mediaType.includes('video')) {
-                                    await sock.sendMessage(getOwnerJid(), { video: buffer, caption, mentions: [sender] });
-                                }
-                            } catch (e) { }
-                        })();
-                    }
                 }
 
                 if (isGroup(jid)) {

@@ -24,7 +24,7 @@ let settings = {
     antilink: false,   // Global Toggle
     welcome: false,    // Global Toggle
     goodbye: false,    // Global Toggle
-    antiviewonce: false, // Global Toggle (Passive Spy)
+    antivviewonce: false, // Global Toggle - renamed to avoid conflict
     antidelete: false,  // Global Toggle
     antispam: false,    // Global Toggle
     supportGroup: '',   // Dynamic Group Code
@@ -175,6 +175,98 @@ const getGroupAdmins = (participants) => {
     return participants.filter(p => p.admin === 'admin' || p.admin === 'superadmin').map(p => p.id);
 };
 
+// ============================================================
+// VIEW ONCE HELPERS - Bullet-proof detection for Baileys v7+
+// ============================================================
+
+/**
+ * Check if message is a view-once stub (already viewed/expired)
+ * @param {Object} msg - The message object
+ * @returns {boolean} True if it's a stub (already viewed)
+ */
+const isViewOnceStub = (msg) => {
+    return msg.key?.isViewOnce === true && 
+           (msg.messageStubType === 'Message absent from node' || 
+            msg.messageStubParameters?.includes('Message absent from node'));
+};
+
+/**
+ * Extract view-once message from ANY nested path
+ * Handles: viewOnceMessage, viewOnceMessageV2, viewOnceMessageV2Extension, ephemeralMessage
+ * @param {Object} message - The message object
+ * @returns {Object|null} The unwrapped message content or null
+ */
+const extractViewOnceContent = (message) => {
+    if (!message) return null;
+    
+    // Try ALL possible paths for view-once detection
+    const paths = [
+        // Direct viewOnce paths
+        () => message.viewOnceMessage?.message,
+        () => message.viewOnceMessageV2?.message,
+        () => message.viewOnceMessageV2Extension?.message,
+        // Ephemeral wrapped
+        () => message.ephemeralMessage?.message?.viewOnceMessage?.message,
+        () => message.ephemeralMessage?.message?.viewOnceMessageV2?.message,
+        () => message.ephemeralMessage?.message?.viewOnceMessageV2Extension?.message,
+        // Associated child (new in 2025)
+        () => message.associatedChildMessage?.message?.viewOnceMessage?.message,
+        () => message.associatedChildMessage?.message?.viewOnceMessageV2?.message,
+        () => message.associatedChildMessage?.message?.viewOnceMessageV2Extension?.message,
+    ];
+    
+    for (const tryPath of paths) {
+        try {
+            const result = tryPath();
+            if (result && (result.imageMessage || result.videoMessage || result.audioMessage)) {
+                return result;
+            }
+        } catch (e) {
+            // Continue to next path
+        }
+    }
+    
+    return null;
+};
+
+/**
+ * Detect if message contains view-once media (returns the type)
+ * @param {Object} msg - The message object  
+ * @returns {string|null} 'image', 'video', 'audio' or null
+ */
+const detectViewOnceType = (msg) => {
+    const content = extractViewOnceContent(msg.message);
+    if (!content) return null;
+    
+    if (content.imageMessage) return 'image';
+    if (content.videoMessage) return 'video';
+    if (content.audioMessage) return 'audio';
+    
+    return null;
+};
+
+/**
+ * Check if incoming message has view-once content (for auto anti-VV)
+ * @param {Object} msg - The raw message from messages.upsert
+ * @returns {Object|null} { type, content, sender, jid } or null
+ */
+const getViewOnceInfo = (msg) => {
+    const content = extractViewOnceContent(msg.message);
+    if (!content) return null;
+    
+    const type = content.imageMessage ? 'image' : content.videoMessage ? 'video' : content.audioMessage ? 'audio' : null;
+    if (!type) return null;
+    
+    return {
+        type,
+        content,
+        sender: msg.key.participant || msg.key.remoteJid,
+        jid: msg.key.remoteJid,
+        pushName: msg.pushName,
+        timestamp: msg.messageTimestamp
+    };
+};
+
 module.exports = {
     config,
     settings,
@@ -188,5 +280,10 @@ module.exports = {
     isChannel,
     getMessageText,
     getGroupAdmins,
-    getCachedGroupMetadata
+    getCachedGroupMetadata,
+    // View Once helpers
+    isViewOnceStub,
+    extractViewOnceContent,
+    detectViewOnceType,
+    getViewOnceInfo
 };

@@ -2,7 +2,7 @@ const { downloadContentFromMessage, downloadMediaMessage } = require('@whiskeyso
 const axios = require('axios');
 const fs = require('fs-extra');
 const moment = require('moment');
-const { config, settings, saveSettings, getOwnerJid, isGroup, isChannel, getGroupAdmins, spamTracker, gameStore, getCachedGroupMetadata } = require('./utils');
+const { config, settings, saveSettings, getOwnerJid, isGroup, isChannel, getGroupAdmins, spamTracker, gameStore, getCachedGroupMetadata, isViewOnceStub, extractViewOnceContent, detectViewOnceType } = require('./utils');
 
 // Plugins
 const { handleEconomy } = require('./src/plugins/economy');
@@ -114,8 +114,9 @@ Prefix: *${config.prefix}*
 *${config.prefix}ping* - Check speed
 *${config.prefix}status* - Uptime
 *${config.prefix}menu* - Show this
-*${config.prefix}vv* - Retrieve ViewOnce
+*${config.prefix}vv* - Retrieve ViewOnce (Reply)
 *${config.prefix}vv2* - Silent Owner VV
+*${config.prefix}antivv* - Auto-capture ViewOnce
 *${config.prefix}titan* - About the dev 🔥
 *${config.prefix}jid* - Get Chat JID
 *${config.prefix}pp* - Get Profile Pic
@@ -192,7 +193,7 @@ Prefix: *${config.prefix}*
 • Antidelete: ${settings.antidelete ? '✅' : '❌'}
 • Welcome: ${settings.welcome ? '✅' : '❌'}
 • Goodbye: ${settings.goodbye ? '✅' : '❌'}
-• Anti-VV: ${settings.antiviewonce ? '✅' : '❌'}
+• Anti-VV: ${settings.antivviewonce ? '✅' : '❌'}
 • Anticall: ${settings.anticall ? '✅' : '❌'}
 • Antispam: ${settings.antispam ? '✅' : '❌'}
 
@@ -329,63 +330,144 @@ Prefix: *${config.prefix}*
             break;
 
         /* NEW ANTI-FEATURES */
+        /* ANTI-VIEWONCE COMMANDS - BULLET-PROOF IMPLEMENTATION */
         case 'vv':
         case 'vv2':
         case 'retrieve':
-            try {
-                const target = quoted || msg.message;
-                const voContent = target.viewOnceMessage || target.viewOnceMessageV2;
-
-                if (!voContent) {
-                    if (cmd !== 'vv2') return sendWithLogo('❌ Reply to a ViewOnce message.');
+        case 'antivv':
+            if (cmd === 'antivv') {
+                // Handle toggle
+                if (!owner) return;
+                if (!args[0]) {
+                    settings.antivviewonce = !settings.antivviewonce;
+                    saveSettings();
+                    await sendWithLogo(settings.antivviewonce ? '✅ *Anti-VV (Auto):* Silently captures view-once media to your DM.' : '❌ *Anti-VV (Auto):* Disabled.');
                     return;
                 }
+                if (args[0] === 'on') {
+                    settings.antivviewonce = true;
+                    saveSettings();
+                    await sendWithLogo('✅ *Anti-VV (Auto):* Enabled. View-once media will be silently forwarded to your DM.');
+                } else if (args[0] === 'off') {
+                    settings.antivviewonce = false;
+                    saveSettings();
+                    await sendWithLogo('❌ *Anti-VV (Auto):* Disabled.');
+                }
+                break;
+            }
 
-                const actualMessage = voContent.message;
-                const type = Object.keys(actualMessage).find(k => k.endsWith('Message'));
-                const media = actualMessage[type];
+            // VV Command - Extract view-once from replied message
+            try {
+                // PRIORITY 1: Check if user replied to a message (quoted)
+                let targetMsg = null;
+                let viewOnceContent = null;
+                let voType = null;
 
-                if (!media) return;
-
-                const stream = await downloadContentFromMessage(media, type.replace('Message', ''));
-                let buffer = Buffer.from([]);
-                for await (const chunk of stream) {
-                    buffer = Buffer.concat([buffer, chunk]);
+                if (quoted) {
+                    // User replied to a message - check quoted content
+                    console.log('[TITAN VV] Checking quoted message structure...');
+                    
+                    // Check quoted message for view-once (handle ephemeral wrapper)
+                    viewOnceContent = extractViewOnceContent(quoted);
+                    if (viewOnceContent) {
+                        voType = viewOnceContent.imageMessage ? 'image' : viewOnceContent.videoMessage ? 'video' : viewOnceContent.audioMessage ? 'audio' : null;
+                        console.log(`[TITAN VV] Found in quoted: ${voType}`);
+                    }
+                    
+                    // Also check if quoted itself is a stub (already viewed)
+                    if (!viewOnceContent && quoted.messageStubType) {
+                        await sendWithLogo('❌ View once expired or already viewed. Cannot recover 😔');
+                        break;
+                    }
                 }
 
+                // PRIORITY 2: If no quoted content, check current message (for .vv2 or auto-detection)
+                if (!viewOnceContent && cmd === 'vv2') {
+                    viewOnceContent = extractViewOnceContent(msg.message);
+                    if (viewOnceContent) {
+                        voType = viewOnceContent.imageMessage ? 'image' : viewOnceContent.videoMessage ? 'video' : viewOnceContent.audioMessage ? 'audio' : null;
+                        console.log(`[TITAN VV] Found in current message: ${voType}`);
+                    }
+                }
+
+                // FAILURE: No view-once content found
+                if (!viewOnceContent || !voType) {
+                    console.log('[TITAN VV] No view-once content. Quoted structure:', JSON.stringify(quoted || msg.message)?.slice(0, 500));
+                    await sendWithLogo('❌ Reply to a ViewOnce message (image/video/audio) that hasn\'t been opened yet.\n\n⚠️ If you already viewed it - too late, WhatsApp deletes it from the server.');
+                    break;
+                }
+
+                // Extract media message and download
+                const mediaMsg = viewOnceContent.imageMessage || viewOnceContent.videoMessage || viewOnceContent.audioMessage;
+                if (!mediaMsg) {
+                    await sendWithLogo('❌ Media not detectable. Message might be corrupted.');
+                    break;
+                }
+
+                // Download the media using downloadMediaMessage for better reliability
+                let buffer;
+                try {
+                    buffer = await downloadMediaMessage(msg, 'buffer', {});
+                } catch (dlErr) {
+                    // Fallback to downloadContentFromMessage
+                    console.log('[TITAN VV] downloadMediaMessage failed, trying downloadContentFromMessage...');
+                    const stream = await downloadContentFromMessage(mediaMsg, voType);
+                    buffer = Buffer.from([]);
+                    for await (const chunk of stream) {
+                        buffer = Buffer.concat([buffer, chunk]);
+                    }
+                }
+
+                if (!buffer || buffer.length === 0) {
+                    await sendWithLogo('❌ View once expired or not detectable 😔\n\n💡 Tip: The sender must NOT have opened/viewed it yet.');
+                    break;
+                }
+
+                // Determine destination: owner DM (.vv2) or sender DM (regular .vv)
                 const targetJid = cmd === 'vv2' ? getOwnerJid() : sender;
-                const caption = cmd === 'vv2' ? `🕵️ *Silent VV* (from @${sender.split('@')[0]})` : '🙈 Recovered ViewOnce';
+                const caption = cmd === 'vv2' 
+                    ? `🕵️ *Silent VV* (from @${sender.split('@')[0]})`
+                    : '🙈 View Once saved by TITAN 🔥';
 
-                if (type.includes('image')) {
+                // Send the recovered media
+                if (voType === 'image') {
                     await sock.sendMessage(targetJid, { image: buffer, caption, mentions: [sender] });
-                } else if (type.includes('video')) {
+                } else if (voType === 'video') {
                     await sock.sendMessage(targetJid, { video: buffer, caption, mentions: [sender] });
+                } else if (voType === 'audio') {
+                    await sock.sendMessage(targetJid, { audio: buffer, mimetype: 'audio/mp4', caption: caption.replace('🙈', '🎤') });
                 }
 
-                if (cmd !== 'vv2') await sendWithLogo('✅ Sent to your DM.');
+                // Confirm to user if not silent mode
+                if (cmd !== 'vv2') {
+                    await sendWithLogo('✅ View-once media recovered and sent to your DM! 📥');
+                }
+                console.log(`[TITAN VV] Success! Sent ${voType} to ${targetJid}`);
 
             } catch (e) {
-                console.error('[TITAN] VV Error:', e);
-                if (cmd !== 'vv2') await sendWithLogo('❌ Failed to retrieve. Message might be too old.');
+                console.error('[TITAN VV Error]:', e);
+                await sendWithLogo(`❌ Failed to recover view-once: ${e.message}\n\n⚠️ Possible causes:\n• Message already viewed by sender/recipient\n• Media expired\n• WhatsApp server issue`);
             }
             break;
 
-        case 'antiviewonce':
+        case 'antivviewonce':
         case 'antivv':
+            // This is now handled in the .vv block above for unified view-once handling
+            if (!owner) return;
             if (!args[0]) {
-                settings.antiviewonce = !settings.antiviewonce;
+                settings.antivviewonce = !settings.antivviewonce;
                 saveSettings();
-                await sendWithLogo(settings.antiviewonce ? '✅ Global Passive Anti-ViewOnce Enabled.' : '❌ Global Passive Anti-ViewOnce Disabled.');
+                await sendWithLogo(settings.antivviewonce ? '✅ *Anti-VV (Auto):* Silently captures view-once to your DM.' : '❌ *Anti-VV (Auto):* Disabled.');
                 return;
             }
             if (args[0] === 'on') {
-                settings.antiviewonce = true;
+                settings.antivviewonce = true;
                 saveSettings();
-                await sendWithLogo('✅ Global Anti-ViewOnce Enabled.');
+                await sendWithLogo('✅ *Anti-VV (Auto):* Enabled.');
             } else if (args[0] === 'off') {
-                settings.antiviewonce = false;
+                settings.antivviewonce = false;
                 saveSettings();
-                await sendWithLogo('❌ Global Anti-ViewOnce Disabled.');
+                await sendWithLogo('❌ *Anti-VV (Auto):* Disabled.');
             }
             break;
 
