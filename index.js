@@ -108,12 +108,47 @@ process.on('uncaughtException', (err) => {
         console.error('[TITAN RECOVERY] FATAL NOISE ERR: Purging corrupted session...');
         try {
             fs.emptyDirSync(config.authPath);
-            console.log('[TITAN] Auth folder wiped. Please provide new SESSION_ID.');
+            console.log('[TITAN] Auth wiped. Please provide new SESSION_ID.');
         } catch (e) { }
         process.exit(1);
     } else {
         console.error('[TITAN] Uncaught Exception:', err);
     }
+});
+
+// Handle unhandled promise rejections (for Bad MAC errors inside Baileys)
+// Don't exit immediately - try graceful reconnect instead
+let sessionErrorCount = 0;
+process.on('unhandledRejection', (reason, promise) => {
+    const reasonStr = String(reason);
+    
+    // Only handle critical session errors
+    if (reasonStr.includes('Bad MAC') || reasonStr.includes('Unsupported state')) {
+        sessionErrorCount++;
+        console.error(`[TITAN] Session error ${sessionErrorCount}x: ${reasonStr.substring(0, 100)}`);
+        
+        // After 3+ session errors, wipe and exit
+        if (sessionErrorCount >= 3) {
+            console.error('[TITAN] Multiple session errors. Wiping auth and exiting...');
+            try {
+                fs.emptyDirSync(config.authPath);
+            } catch (e) { }
+            process.exit(1);
+        }
+        
+        // Otherwise try to reconnect gracefully
+        console.log('[TITAN] Attempting to reconnect...');
+        setTimeout(() => {
+            if (currentSock) {
+                try { currentSock.end(undefined); } catch(e) { }
+            }
+            setTimeout(() => startTitan(), 5000);
+        }, 2000);
+        return;
+    }
+    
+    // Non-critical errors - just log
+    console.error('[TITAN] Unhandled Rejection:', reasonStr.substring(0, 200));
 });
 
 // Handle unhandled promise rejections (for Bad MAC errors inside Baileys)
