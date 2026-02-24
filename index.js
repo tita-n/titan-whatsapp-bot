@@ -164,10 +164,10 @@ const getBackoffDelay = (attempt) => {
 async function startTitan() {
     console.log('[TITAN] Starting...');
     
-    // On first start, wait a bit to let any old instance die
+    // On first start, wait 5 seconds to let any old instance die on WhatsApp's end
     if (reconnectAttempts === 0) {
-        console.log('[TITAN] First connection attempt, waiting 10s for any old instance to die...');
-        await new Promise(resolve => setTimeout(resolve, 10000));
+        console.log('[TITAN] First connection attempt, waiting 5s for any old instance to die...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
     }
     
     const { state, saveCreds } = await useMultiFileAuthState(config.authPath);
