@@ -310,6 +310,7 @@ async function startTitan() {
 
     // Connection Logic
     let pulseInterval;
+    let isFirstConnection = true; // Track if this is first connect or reconnect
     const startTime = Date.now();
     const startPulse = () => {
         if (pulseInterval) clearInterval(pulseInterval);
@@ -328,13 +329,20 @@ async function startTitan() {
         const { connection, lastDisconnect } = update;
 
         if (connection === 'open') {
-            if (connectionLock) return; // Prevent multiple notifications/syncs
+            // Only send welcome message on FIRST connection, not on reconnect
+            if (connectionLock) return; // Prevent multiple notifications
             connectionLock = true;
 
             console.log('[TITAN] ✅ Connected successfully!');
             startPulse();
 
-            await sock.sendMessage(getOwnerJid(), { text: '⚡ *TITAN SYSTEM ONLINE*\n\nGlobal Shields Active. Stability level: CRITICAL_MAX.' });
+            // Only send "SYSTEM ONLINE" on first connect after bot starts
+            if (isFirstConnection) {
+                isFirstConnection = false;
+                await sock.sendMessage(getOwnerJid(), { text: '⚡ *TITAN SYSTEM ONLINE*\n\nGlobal Shields Active. Stability level: CRITICAL_MAX.' });
+            } else {
+                console.log('[TITAN] Reconnected (skipping notification)');
+            }
 
             // --- SESSION EXPORTER ---
             if (!process.env.SESSION_ID) {
@@ -370,12 +378,13 @@ async function startTitan() {
                 console.error('[TITAN] SESSION EXPIRED: Deleting credentials...');
                 fs.emptyDirSync(config.authPath);
                 console.log('[TITAN] Please re-pair using the session generator or pairing code.');
-                // Don't auto-restart infinitely on 401
                 process.exit(1);
             } else if (isConflict) {
-                console.log('[TITAN] Conflict/Stream error. Waiting 15s for old instance to die...');
-                setTimeout(() => startTitan(), 15000);
+                // Conflict = old instance still connected. Wait LONGER (30s) for old session to die
+                console.log('[TITAN] Conflict detected. Waiting 30s for old instance to die...');
+                setTimeout(() => startTitan(), 30000);
             } else {
+                // Normal disconnect - wait and reconnect
                 console.log('[TITAN] Restarting script in 5s...');
                 setTimeout(() => startTitan(), 5000);
             }
