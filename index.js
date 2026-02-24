@@ -108,12 +108,26 @@ process.on('uncaughtException', (err) => {
         console.error('[TITAN RECOVERY] FATAL NOISE ERR: Purging corrupted session...');
         try {
             fs.emptyDirSync(config.authPath);
-            console.log('[TITAN] Auth folder wiped. Please restart and re-pair.');
+            console.log('[TITAN] Auth folder wiped. Please provide new SESSION_ID.');
         } catch (e) { }
         process.exit(1);
     } else {
         console.error('[TITAN] Uncaught Exception:', err);
     }
+});
+
+// Handle unhandled promise rejections (for Bad MAC errors inside Baileys)
+process.on('unhandledRejection', (reason, promise) => {
+    const reasonStr = String(reason);
+    if (reasonStr.includes('Bad MAC') || reasonStr.includes('Unsupported state')) {
+        console.error('[TITAN RECOVERY] Session error detected. Wiping auth...');
+        try {
+            fs.emptyDirSync(config.authPath);
+            console.log('[TITAN] Auth wiped. Please provide new SESSION_ID.');
+        } catch (e) { }
+        process.exit(1);
+    }
+    console.error('[TITAN] Unhandled Rejection:', reason);
 });
 
 // ============================================================
