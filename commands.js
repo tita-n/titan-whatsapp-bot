@@ -63,9 +63,13 @@ async function handleAntiLink(sock, msg, jid, text, sender) {
     try {
         // Check if sender is admin - bypass
         const meta = await getCachedGroupMetadata(sock, jid);
-        const admins = getGroupAdmins(meta?.participants || []);
-        
-        if (admins.includes(sender)) {
+       const admins = getGroupAdmins(meta?.participants || []);
+
+// Normalize JIDs to strip device suffix before comparing
+const normalizedSender = sender.split(':')[0] + '@s.whatsapp.net';
+const normalizedAdmins = admins.map(a => a.split(':')[0] + '@s.whatsapp.net');
+
+if (normalizedAdmins.includes(normalizedSender)) {
             console.log(`[TITAN ANTI-LINK] User is admin, bypassing`);
             return false;
         }
