@@ -135,7 +135,7 @@ async function gracefulShutdown(signal) {
     
     if (currentSock) {
         try {
-            await currentSock.logout();
+            await currentSock.end(undefined);
             console.log('[TITAN] Graceful logout successful. Old connection invalidated.');
         } catch (e) {
             console.log('[TITAN] Graceful logout error (can be ignored):', e.message);
@@ -456,13 +456,12 @@ async function startTitan() {
             if (isConflict) {
                 reconnectAttempts++;
                 
-                if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-                    console.log('[TITAN] Max reconnect attempts reached. Wiping session...');
-                    fs.emptyDirSync(config.authPath);
-                    reconnectAttempts = 0;
-                    console.log('[TITAN] Session wiped. Restarting with fresh session...');
-                    setTimeout(() => startTitan(), 5000);
-                    return;
+               if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                 console.log('[TITAN] Max conflict attempts. Waiting 5 minutes before final retry...');
+                  reconnectAttempts = 0;
+                  setTimeout(() => startTitan(), 5 * 60 * 1000);
+                   return;
+              }
                 }
                 
                 // Exponential backoff: 30s, 60s, 120s, 240s, 480s
