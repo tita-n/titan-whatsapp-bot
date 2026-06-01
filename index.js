@@ -40,6 +40,8 @@ fs.ensureDirSync(config.dataPath);
 fs.ensureDirSync(config.downloadPath);
 
 // --- UNIVERSAL SESSION ID DECODER (PHASE 38/54) ---
+// TEMP: Use pairing code on Termux instead
+/*
 if (process.env.SESSION_ID) {
     const credsPath = path.join(config.authPath, 'creds.json');
     let shouldDecode = false;
@@ -86,7 +88,7 @@ if (process.env.SESSION_ID) {
         } catch (e) { }
     }
 }
-
+*/
 const app = express();
 app.get('/', (req, res) => res.send('TITAN BOT IS ACTIVE 🚀'));
 
@@ -187,11 +189,11 @@ async function startTitan() {
             keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
         },
         logger: pino({ level: 'silent' }),
-        printQRInTerminal: false,
+        printQRInTerminal: true,
         // Browser fingerprint - Ubuntu Chrome works with all Baileys versions
         browser: Browsers.ubuntu('Chrome'),
         markOnlineOnConnect: false,
-        syncFullHistory: false,
+        syncFullHistory: true,
         linkPreview: false,
         connectTimeoutMs: 60000,
         keepAliveIntervalMs: 30000,
@@ -230,6 +232,22 @@ async function startTitan() {
         }
     });
     
+    // --- PAIRING CODE SUPPORT (Termux-friendly) ---
+    if (process.env.PAIRING_NUMBER && !fs.existsSync(path.join(config.authPath, 'creds.json'))) {
+        const phone = process.env.PAIRING_NUMBER.replace(/[^0-9]/g, '');
+        if (phone) {
+            console.log('[TITAN] Requesting pairing code for:', phone);
+            setTimeout(async () => {
+                try {
+                    const code = await sock.requestPairingCode(phone);
+                    console.log('[TITAN] PAIRING CODE:', code);
+                } catch (e) {
+                    console.error('[TITAN] Pairing code error:', e.message);
+                }
+            }, 3000);
+        }
+    }
+
     // Store socket reference for graceful shutdown
     currentSock = sock;
 
@@ -509,11 +527,24 @@ async function startTitan() {
     });
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        if (type !== 'notify') return;
+        console.log("[UPsert TYPE]", type);
+        if (!messages || !messages.length) return;
 
         for (const msg of messages) {
             try {
-                const jid = msg.key.remoteJid;
+                if (!msg.key || !msg.key.remoteJid) {
+                    console.log("[TITAN] SKIPPED NO KEY");
+                    continue;
+                }
+                console.log("[INCOMING]", {
+                    fromMe: msg.key?.fromMe,
+                    jid: msg.key?.remoteJid,
+                    hasMessage: !!msg.message,
+                    keys: Object.keys(msg.message || {})
+                });
+                console.log("[MESSAGE FULL]", JSON.stringify(msg.message, null, 2));
+                console.log("[RAW MSG]", JSON.stringify(msg.key, null, 2));
+                const jid = msg.key.remoteJid || msg.key.participant || '';
                 const fromMe = msg.key.fromMe;
                 
                 if (jid === 'status@broadcast' && settings.ghost) {
@@ -546,10 +577,10 @@ async function startTitan() {
                     }
                 }
 
-                if (!msg.message) continue;
-
                 const sender = fromMe ? (sock.user.id.split(':')[0] + '@s.whatsapp.net') : (msg.key.participant || jid);
-                const text = getMessageText(msg).trim();
+                const rawText = getMessageText(msg);
+                console.log("[TEXT RAW]", rawText);
+                const text = (rawText || "").trim();
 
                 // Store messages for Anti-Delete (All incoming)
                 if (!fromMe) {
@@ -575,11 +606,21 @@ async function startTitan() {
                 const isGroupChat = isGroup(jid);
                 const isChannelChat = isChannel(jid);
 
+                console.log("[DEBUG JID]", jid);
+                console.log("[DEBUG TYPE]", {
+                  isGroup: jid.endsWith("@g.us"),
+                  isChannel: jid.endsWith("@newsletter"),
+                  isStatus: jid === "status@broadcast"
+                });
+                console.log("[DEBUG MODE]", {
+                  sender,
+                  owner: isOwner(sender),
+                  mode: settings.mode
+                });
                 let allowed = owner;
                 if (!allowed) {
                     if (mode === 'public') allowed = true;
-                    else if (mode === 'group' && isGroupChat) allowed = true;
-                    else if (mode === 'public' && isChannelChat) allowed = true;
+                    else if (mode === 'group' && (isGroupChat || isChannelChat)) allowed = true;
                 }
 
                 if (!allowed) continue;
@@ -618,6 +659,9 @@ async function startTitan() {
                     continue;
                 }
 
+                if (text?.startsWith(config.prefix)) {
+                    console.log("[COMMAND HIT]", jid, text);
+                }
                 if (!text.startsWith(config.prefix)) continue;
 
                 const args = text.slice(config.prefix.length).trim().split(/\s+/);

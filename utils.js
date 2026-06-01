@@ -225,6 +225,7 @@ const getMessageText = (msg) => {
         content.buttonsResponseMessage?.selectedButtonId ||
         content.listResponseMessage?.singleSelectReply?.selectedRowId ||
         content.newsletterAction?.text || // Handle some channel specific actions if needed
+        msg.message?.conversation ||
         '';
 };
 
