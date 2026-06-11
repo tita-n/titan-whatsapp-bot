@@ -4,7 +4,7 @@
  */
 
 require('dotenv').config();
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, Browsers, downloadMediaMessage } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, Browsers, downloadMediaMessage, proto } = require('@whiskeysockets/baileys');
 const express = require('express');
 const fs = require('fs-extra');
 const pino = require('pino');
@@ -39,10 +39,9 @@ fs.ensureDirSync(config.authPath);
 fs.ensureDirSync(config.dataPath);
 fs.ensureDirSync(config.downloadPath);
 
-// --- UNIVERSAL SESSION ID DECODER (PHASE 38/54) ---
-// TEMP: Use pairing code on Termux instead
-/*
-if (process.env.SESSION_ID) {
+// --- UNIVERSAL SESSION ID DECODER ---
+// Only use SESSION_ID if PAIRING_NUMBER is not set (fresh pairing preferred)
+if (process.env.SESSION_ID && !process.env.PAIRING_NUMBER) {
     const credsPath = path.join(config.authPath, 'creds.json');
     let shouldDecode = false;
 
@@ -50,20 +49,25 @@ if (process.env.SESSION_ID) {
         shouldDecode = true;
     } else {
         try {
-            const currentCreds = fs.readFileSync(credsPath, 'utf-8').trim();
+            const currentCreds = JSON.parse(fs.readFileSync(credsPath, 'utf-8').trim());
             const sid = process.env.SESSION_ID.trim();
-            let decoded;
+            let decodedRaw;
             if (sid.startsWith('{')) {
-                decoded = sid;
+                decodedRaw = sid;
             } else {
                 let cleanSid = sid;
                 if (cleanSid.includes(':')) cleanSid = cleanSid.split(':')[1];
                 if (cleanSid.includes('~')) cleanSid = cleanSid.split('~')[1];
-                decoded = Buffer.from(cleanSid, 'base64').toString('utf-8');
+                decodedRaw = Buffer.from(cleanSid, 'base64').toString('utf-8');
             }
-            if (currentCreds.replace(/\s/g, '') !== decoded.replace(/\s/g, '')) {
-                console.log('[TITAN] SESSION_ID mismatch. Wiping...');
+            const decodedCreds = JSON.parse(decodedRaw);
+            const currentId = currentCreds.me?.id || '';
+            const decodedId = decodedCreds.me?.id || '';
+            if (currentId.split(':')[0] !== decodedId.split(':')[0]) {
+                console.log('[TITAN] SESSION_ID belongs to a different account. Wiping...');
                 shouldDecode = true;
+            } else {
+                console.log('[TITAN] SESSION_ID matches current account. Keeping auth intact.');
             }
         } catch (e) {
             shouldDecode = true;
@@ -88,7 +92,6 @@ if (process.env.SESSION_ID) {
         } catch (e) { }
     }
 }
-*/
 const app = express();
 app.get('/', (req, res) => res.send('TITAN BOT IS ACTIVE 🚀'));
 
@@ -100,21 +103,17 @@ server.on('error', (err) => {
     }
 });
 
-// --- NUCLEAR HANDSHAKE RECOVERY (PHASE 53) ---
+// --- HANDLE UNCAUGHT ERRORS GRACEFULLY ---
 process.on('uncaughtException', (err) => {
     const isNoiseError = err.message.includes('Unsupported state') ||
         err.message.includes('unable to authenticate data') ||
         err.message.includes('Bad MAC');
 
     if (isNoiseError) {
-        console.error('[TITAN RECOVERY] FATAL NOISE ERR: Purging corrupted session...');
-        try {
-            fs.emptyDirSync(config.authPath);
-            console.log('[TITAN] Auth wiped. Please provide new SESSION_ID.');
-        } catch (e) { }
-        process.exit(1);
+        console.error('[TITAN] Noise error (non-fatal):', err.message);
     } else {
         console.error('[TITAN] Uncaught Exception:', err);
+        process.exit(1);
     }
 });
 
@@ -193,7 +192,7 @@ async function startTitan() {
         // Browser fingerprint - Ubuntu Chrome works with all Baileys versions
         browser: Browsers.ubuntu('Chrome'),
         markOnlineOnConnect: false,
-        syncFullHistory: true,
+        syncFullHistory: false,
         linkPreview: false,
         connectTimeoutMs: 60000,
         keepAliveIntervalMs: 30000,
@@ -475,12 +474,11 @@ async function startTitan() {
                 reconnectAttempts++;
                 
                if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-                 console.log('[TITAN] Max conflict attempts. Waiting 5 minutes before final retry...');
-                  reconnectAttempts = 0;
-                  setTimeout(() => startTitan(), 5 * 60 * 1000);
-                   return;
-              }
-                }
+                  console.log('[TITAN] Max conflict attempts. Waiting 5 minutes before final retry...');
+                   reconnectAttempts = 0;
+                   setTimeout(() => startTitan(), 5 * 60 * 1000);
+                    return;
+               }
                 
                 // Exponential backoff: 30s, 60s, 120s, 240s, 480s
                 const delay = getBackoffDelay(reconnectAttempts - 1);
@@ -527,8 +525,7 @@ async function startTitan() {
     });
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        console.log("[UPsert TYPE]", type);
-        if (!messages || !messages.length) return;
+        if (type !== 'notify') return;
 
         for (const msg of messages) {
             try {
@@ -589,19 +586,31 @@ async function startTitan() {
 
                 console.log(`[TITAN] ${jid.split('@')[0]} | @${sender.split('@')[0]}: ${text || '(media)'}`);
 
-                // --- AUTO OWNER DETECTION ---
-                if (!settings.ownerJid && !config.ownerNumber && sender && !fromMe) {
-                    settings.ownerJid = sender;
-                    saveSettings();
-                    sock.sendMessage(jid, { text: `🎉 *TITAN CONNECTED!*\n\nYou have been auto-detected as the **OWNER**. \n\nCommands are now locked to you. Type *${config.prefix}menu* to begin!` }).catch(() => { });
-                }
-
                 if (isGroup(jid)) {
                     if (await handleAntiLink(sock, msg, jid, text, sender)) continue;
                 }
 
-                // --- MODE CONTROL (PHASE 14) ---
-                const mode = settings.mode || 'private';
+                // --- AUTO OWNER DETECTION (for LID support) ---
+                if (sender && !fromMe && !settings.ownerJid) {
+                    const senderNum = sender.split('@')[0].split(':')[0];
+                    let isOwnerMessage = senderNum === config.ownerNumber;
+                    if (!isOwnerMessage && (sender.endsWith('@lid') || sender.endsWith('@hosted.lid') || sender.endsWith('@hosted'))) {
+                        try {
+                            const reversePath = path.join(config.authPath, `lid-mapping-${senderNum}_reverse.json`);
+                            if (fs.existsSync(reversePath)) {
+                                isOwnerMessage = fs.readJsonSync(reversePath) === config.ownerNumber;
+                            }
+                        } catch (e) {}
+                    }
+                    if (isOwnerMessage) {
+                        settings.ownerJid = sender;
+                        saveSettings();
+                        sock.sendMessage(jid, { text: `🎉 *TITAN CONNECTED!*\n\nYou have been auto-detected as the **OWNER**. \n\nCommands are now locked to you. Type *${config.prefix}menu* to begin!` }).catch(() => { });
+                    }
+                }
+
+                // --- MODE CONTROL ---
+                const mode = config.mode || settings.mode || 'private';
                 const owner = isOwner(sender);
                 const isGroupChat = isGroup(jid);
                 const isChannelChat = isChannel(jid);
@@ -615,7 +624,7 @@ async function startTitan() {
                 console.log("[DEBUG MODE]", {
                   sender,
                   owner: isOwner(sender),
-                  mode: settings.mode
+                  mode
                 });
                 let allowed = owner;
                 if (!allowed) {
@@ -624,6 +633,12 @@ async function startTitan() {
                 }
 
                 if (!allowed) continue;
+
+                // Skip messages that failed decryption (CIPHERTEXT)
+                if (msg.messageStubType === proto.WebMessageInfo.StubType.CIPHERTEXT || !msg.message) {
+                    console.log("[TITAN] SKIP undecryptable message");
+                    continue;
+                }
 
                 // --- ANTI-SPAM ---
                 if (isGroup(jid) && settings.antispam && !fromMe) {
@@ -659,9 +674,7 @@ async function startTitan() {
                     continue;
                 }
 
-                if (text?.startsWith(config.prefix)) {
-                    console.log("[COMMAND HIT]", jid, text);
-                }
+                console.log("[PREFIX CHECK]", { text, prefix: config.prefix, starts: text.startsWith(config.prefix), textLen: text.length });
                 if (!text.startsWith(config.prefix)) continue;
 
                 const args = text.slice(config.prefix.length).trim().split(/\s+/);

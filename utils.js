@@ -203,9 +203,23 @@ const getOwnerJid = () => `${config.ownerNumber}@s.whatsapp.net`;
 const isOwner = (jid) => {
     if (!jid) return false;
     const num = jid.split('@')[0].split(':')[0];
-    // Priority: Dynamic Setting > Env Variable
-    if (settings.ownerJid) return jid.split('@')[0] === settings.ownerJid.split('@')[0];
-    return num === config.ownerNumber;
+    if (settings.ownerJid) {
+        const ownerNum = settings.ownerJid.split('@')[0];
+        return jid.split('@')[0] === ownerNum || num === ownerNum.split(':')[0];
+    }
+    if (num === config.ownerNumber) return true;
+    // Handle LID-based JIDs - try to resolve via lid-mapping files
+    try {
+        if (jid.endsWith('@lid') || jid.endsWith('@hosted.lid') || jid.endsWith('@hosted')) {
+            const lidUser = num;
+            const reversePath = path.join(config.authPath, `lid-mapping-${lidUser}_reverse.json`);
+            if (fs.existsSync(reversePath)) {
+                const pnUser = fs.readJsonSync(reversePath);
+                if (pnUser === config.ownerNumber) return true;
+            }
+        }
+    } catch (e) {}
+    return false;
 };
 
 const isGroup = (jid) => jid?.endsWith('@g.us');
