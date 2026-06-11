@@ -591,8 +591,10 @@ async function startTitan() {
                 }
 
                 // --- AUTO OWNER DETECTION (for LID support) ---
-                if (sender && !fromMe && !settings.ownerJid) {
-                    const senderNum = sender.split('@')[0].split(':')[0];
+                if (sender && !settings.ownerJid) {
+                    const senderNum = fromMe 
+                        ? sock.user.id.split('@')[0].split(':')[0]
+                        : sender.split('@')[0].split(':')[0];
                     let isOwnerMessage = senderNum === config.ownerNumber;
                     if (!isOwnerMessage && (sender.endsWith('@lid') || sender.endsWith('@hosted.lid') || sender.endsWith('@hosted'))) {
                         try {
