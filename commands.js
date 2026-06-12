@@ -299,10 +299,12 @@ Prefix: *${config.prefix}*
 *🎮 Games*
 *${config.prefix}hangman* - Start Hangman
 *${config.prefix}math* - Start Math Quiz
-*${config.prefix}chess @player* - Challenge to Chess
+*${config.prefix}chess* - Play chess vs Bot
+*${config.prefix}chess @player* - Challenge someone
 *${config.prefix}accept* - Accept chess challenge
 *${config.prefix}move e4* - Make a chess move
 *${config.prefix}board* - Show chess board
+*${config.prefix}rules* - Chess rules & notation
 *${config.prefix}resign* - Resign chess game
 *${config.prefix}draw* - Offer/accept draw
 *${config.prefix}join* - Join an active lobby
@@ -683,6 +685,7 @@ Prefix: *${config.prefix}*
             break;
 
         case 'board':
+        case 'rules':
             await handleChess(sock, msg, jid, sender, cmd, args, text, owner, cmdStart, sendWithLogo);
             break;
 

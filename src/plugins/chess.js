@@ -28,6 +28,47 @@ function renderBoard(fen) {
     return '```\n' + board + '\n```';
 }
 
+const RULES_TEXT = `♟️ *CHESS RULES* ♟️
+
+*PIECES & MOVEMENT*
+
+♔ ♚ *King* — 1 square any direction.
+♕ ♛ *Queen* — any number of squares any direction.
+♖ ♜ *Rook* — any number of squares horizontally or vertically.
+♗ ♝ *Bishop* — any number of squares diagonally.
+♘ ♞ *Knight* — L-shape (2+1). Jumps over pieces.
+♙ ♟ *Pawn* — Forward 1 (2 from start). Captures diagonally.
+
+*SPECIAL MOVES*
+
+• *Castling* (O-O / O-O-O): Move king 2 squares toward rook, rook jumps over. Only if neither has moved, no pieces between, king not in check.
+• *En passant*: If pawn advances 2 squares past enemy pawn, that pawn can be captured as if it moved 1 square — *next move only*.
+• *Promotion*: Pawn reaching last rank becomes Q/R/B/N. Auto-queens unless you specify, e.g. \`h8=R\`.
+
+*NOTATION (SAN)*
+
+Each square has a coordinate: \`a1\` to \`h8\`.
+Moves use piece letter + destination: \`Nf3\`, \`e4\`.
+Captures use \`x\`: \`Nxd4\`, \`exd5\`.
+Check: \`+\`, Checkmate: \`#\`.
+Castling: \`O-O\` (kingside), \`O-O-O\` (queenside).
+Promotion: \`e8=Q\`.
+
+*HOW TO PLAY IN THIS BOT*
+
+• \`.chess\` — vs TITAN Bot
+• \`.chess @player\` — challenge someone
+• \`.move e4\` or just type \`e4\` — make a move
+• \`.board\` — show board
+• \`.resign\` — forfeit
+• \`.draw\` — offer/accept draw
+
+*WIN / LOSE / DRAW*
+
+• *Checkmate* — king is attacked with no escape.
+• *Stalemate* — no legal moves but not in check (draw).
+• *Draw* — can agree, or occurs by repetition (3x), 50-move rule, or insufficient material.`;
+
 function getGameStatusText(chess) {
     if (chess.isCheckmate()) return '⚠️ *Checkmate!*';
     if (chess.isStalemate()) return '🤝 *Stalemate!*';
@@ -379,6 +420,11 @@ async function handleChess(sock, msg, jid, sender, cmd, args, text, owner, cmdSt
                     mentions: [opponent]
                 });
             }
+            break;
+        }
+
+        case 'rules': {
+            await sock.sendMessage(jid, { text: RULES_TEXT });
             break;
         }
 
