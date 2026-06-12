@@ -6,7 +6,7 @@ const path = require('path');
 const config = {
     ownerNumber: (process.env.OWNER_NUMBER || '').replace(/[^0-9]/g, ''),
     botName: process.env.BOT_NAME || 'TITAN',
-    prefix: process.env.PREFIX || '.',
+    prefix: process.env.BOT_PREFIX || '.',
     mode: process.env.MODE || 'private',
     repoUrl: 'https://github.com/tita-n/titan-whatsapp-bot.git',
     port: process.env.PORT ? parseInt(process.env.PORT.toString().trim()) : 3000,
