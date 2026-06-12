@@ -699,9 +699,12 @@ async function startTitan() {
                 // --- GAME INPUT ---
                 const game = gameStore.get(jid);
                 if (game && game.status === 'active' && !text.startsWith(config.prefix) && text) {
+                    const trimmed = text.trim();
                     const isValidGuess = game.type === 'math'
-                        ? /^-?\d+(\.\d+)?$/.test(text.trim())
-                        : /^[a-zA-Z]$/.test(text.trim());
+                        ? /^-?\d+(\.\d+)?$/.test(trimmed)
+                        : game.type === 'chess'
+                            ? /^[KQRBNP]?[a-h]?[1-8]?x?[a-h][1-8](?:=[KQRBNP])?[+#]?$|^O-O(?:-O)?[+#]?$/i.test(trimmed)
+                            : /^[a-zA-Z]$/.test(trimmed);
                     if (isValidGuess) {
                         await handleCommand(sock, msg, jid, sender, `_game_input_`, [], text, owner);
                         continue;

@@ -12,6 +12,7 @@ const { handleAdmin } = require('./src/plugins/admin');
 const { handleMusic } = require('./src/plugins/music');
 const { handleTools } = require('./src/plugins/tools');
 const { handleTitanAI } = require('./src/plugins/titan_ai');
+const { handleChess, isChessMove, makeChessMove } = require('./src/plugins/chess');
 
 const ADMIN_COMMANDS = [
     'mode', 'kick', 'remove', 'promote', 'demote', 'mute', 'close', 'unmute', 'open',
@@ -298,6 +299,12 @@ Prefix: *${config.prefix}*
 *🎮 Games*
 *${config.prefix}hangman* - Start Hangman
 *${config.prefix}math* - Start Math Quiz
+*${config.prefix}chess @player* - Challenge to Chess
+*${config.prefix}accept* - Accept chess challenge
+*${config.prefix}move e4* - Make a chess move
+*${config.prefix}board* - Show chess board
+*${config.prefix}resign* - Resign chess game
+*${config.prefix}draw* - Offer/accept draw
 *${config.prefix}join* - Join an active lobby
 
 *⚙️ Config (Owner)*
@@ -649,6 +656,34 @@ Prefix: *${config.prefix}*
 
         case '_game_input_':
             await handleGameInput(sock, jid, sender, text, msg);
+            break;
+
+        case 'chess':
+            await handleChess(sock, msg, jid, sender, cmd, args, text, owner, cmdStart, sendWithLogo);
+            break;
+
+        case 'accept':
+            await handleChess(sock, msg, jid, sender, cmd, args, text, owner, cmdStart, sendWithLogo);
+            break;
+
+        case 'cancel':
+            await handleChess(sock, msg, jid, sender, cmd, args, text, owner, cmdStart, sendWithLogo);
+            break;
+
+        case 'move':
+            await handleChess(sock, msg, jid, sender, cmd, args, text, owner, cmdStart, sendWithLogo);
+            break;
+
+        case 'resign':
+            await handleChess(sock, msg, jid, sender, cmd, args, text, owner, cmdStart, sendWithLogo);
+            break;
+
+        case 'draw':
+            await handleChess(sock, msg, jid, sender, cmd, args, text, owner, cmdStart, sendWithLogo);
+            break;
+
+        case 'board':
+            await handleChess(sock, msg, jid, sender, cmd, args, text, owner, cmdStart, sendWithLogo);
             break;
 
         case 'toimage':
@@ -1047,6 +1082,11 @@ async function startGame(sock, jid) {
 async function handleGameInput(sock, jid, sender, input, msg) {
     const game = gameStore.get(jid);
     if (!game || game.status !== 'active') return;
+
+    if (game.type === 'chess') {
+        await makeChessMove(sock, jid, sender, input.trim());
+        return;
+    }
 
     if (game.type === 'math') {
         if (game.answered) return;
