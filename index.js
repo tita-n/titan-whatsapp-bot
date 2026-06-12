@@ -4,7 +4,7 @@
  */
 
 require('dotenv').config();
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, Browsers, downloadMediaMessage, proto } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, Browsers, downloadMediaMessage, downloadContentFromMessage, proto } = require('@whiskeysockets/baileys');
 const express = require('express');
 const fs = require('fs-extra');
 const pino = require('pino');
@@ -572,7 +572,13 @@ async function startTitan() {
                     if (voInfo) {
                         console.log(`[TITAN ANTI-VV] View once detected! Type: ${voInfo.type} from @${voInfo.sender.split('@')[0]}`);
                         try {
-                            const buffer = await downloadMediaMessage(msg, 'buffer', {});
+                            const mediaContent = voInfo.content.imageMessage || voInfo.content.videoMessage || voInfo.content.audioMessage;
+                            if (!mediaContent) throw new Error('No media content found');
+                            const stream = await downloadContentFromMessage(mediaContent, voInfo.type);
+                            let buffer = Buffer.from([]);
+                            for await (const chunk of stream) {
+                                buffer = Buffer.concat([buffer, chunk]);
+                            }
                             const caption = `🕵️ *ANTI-VIEWONCE CATCH*\n\n👤 From: @${voInfo.sender.split('@')[0]}\n💬 Chat: ${voInfo.jid}\n⏰ Time: ${new Date(voInfo.timestamp * 1000).toLocaleString()}\n📎 Type: ${voInfo.type.toUpperCase()}`;
                             
                             if (voInfo.type === 'image') {
@@ -580,7 +586,7 @@ async function startTitan() {
                             } else if (voInfo.type === 'video') {
                                 await sock.sendMessage(getOwnerJid(), { video: buffer, caption, mentions: [voInfo.sender] });
                             } else if (voInfo.type === 'audio') {
-                                await sock.sendMessage(getOwnerJid(), { audio: buffer, caption: caption.replace(voInfo.type.toUpperCase(), 'AUDIO 🎤'), mentions: [voInfo.sender] });
+                                await sock.sendMessage(getOwnerJid(), { audio: buffer, mimetype: 'audio/mp4', caption: caption.replace(voInfo.type.toUpperCase(), 'AUDIO 🎤'), mentions: [voInfo.sender] });
                             }
                             console.log(`[TITAN ANTI-VV] Forwarded to owner successfully`);
                         } catch (vvErr) {
