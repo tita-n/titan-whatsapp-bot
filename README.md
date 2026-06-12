@@ -47,8 +47,8 @@ If Railway asks for a credit card, just switch to **Render** using the button ab
 Run TITAN directly on your Android phone using Termux.
 
 ### 1. Install Termux
-**⚠️ Do NOT use the Play Store version — it's outdated and broken.**
-Download Termux from **F-Droid** (free, no account needed):
+**F-Droid version is recommended** (Play Store version is outdated but may still work).
+Download from F-Droid (free, no account needed):
 👉 https://f-droid.org/packages/com.termux/
 
 Also install Termux:Boot if you want the bot to auto-start on phone reboot:
