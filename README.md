@@ -42,6 +42,58 @@ If Railway asks for a credit card, just switch to **Render** using the button ab
 
 ---
 
+## 📱 Android (Termux) — Run on your phone
+
+Run TITAN directly on your Android phone using Termux.
+
+### 1. Install Termux
+**⚠️ Do NOT use the Play Store version — it's outdated and broken.**
+Download Termux from **F-Droid** (free, no account needed):
+👉 https://f-droid.org/packages/com.termux/
+
+Also install Termux:Boot if you want the bot to auto-start on phone reboot:
+👉 https://f-droid.org/packages/com.termux.boot/
+
+### 2. Open Termux and run:
+
+```bash
+pkg update -y && pkg upgrade -y
+pkg install git nodejs-lts -y
+termux-setup-storage
+git clone https://github.com/tita-n/titan-whatsapp-bot.git
+cd titan-whatsapp-bot
+npm install
+```
+
+### 3. Create config file
+
+```bash
+echo "OWNER_NUMBER=2348083433738
+BOT_PREFIX=.
+MODE=private" > .env
+```
+
+Replace `2348083433738` with your own WhatsApp number (country code, no +).
+
+### 4. Start the bot
+
+```bash
+npm start
+```
+
+You'll get a **pairing code** — open WhatsApp → Linked Devices → Link a Device → enter the code.
+
+### 5. Keep it running
+
+- Keep Termux open and the bot stays online
+- If you close Termux, reopen it and run:
+  ```bash
+  cd titan-whatsapp-bot && npm start
+  ```
+- For 24/7 operation, deploy to Render/Railway instead (see above)
+
+---
+
 ## 💎 Features
 
 *   🌍 **3 Access Modes**: `.mode` (private / public / group).
