@@ -5,7 +5,7 @@ const moment = require('moment');
 const { config, settings, saveSettings, getOwnerJid, isGroup, isChannel, getGroupAdmins, spamTracker, gameStore, getCachedGroupMetadata, isViewOnceStub, extractViewOnceContent, detectViewOnceType, isBotAdmin, getGroupSettings, updateGroupSettings, addStrike, getStrikes, clearStrikes } = require('./utils');
 
 // Plugins
-const { handleEconomy } = require('./src/plugins/economy');
+const { handleEconomy, getUser, saveDb } = require('./src/plugins/economy');
 const { handleAI } = require('./src/plugins/ai');
 const { handleMediaConvert } = require('./src/plugins/media');
 const { handleAdmin } = require('./src/plugins/admin');
@@ -762,7 +762,7 @@ Prefix: *${config.prefix}*
                 setTimeout(async () => {
                     const g = gameStore.get(jid);
                     if (g && g.status === 'lobby') {
-                        if (g.players.length < 1) {
+                        if (g.players.length < 2) {
                             gameStore.delete(jid);
                             await sock.sendMessage(jid, { text: `⏰ *${gameType} Lobby Expired.* Not enough players joined.` });
                         } else {
@@ -875,7 +875,11 @@ _“Building the future, one line of code at a time.”_
                     serverMessageId: 1
                 }
             };
-            await sock.sendMessage(jid, { image: { url: titanImg }, caption: titanText, contextInfo: titanContext });
+            try {
+                await sock.sendMessage(jid, { image: { url: titanImg }, caption: titanText, contextInfo: titanContext });
+            } catch (e) {
+                await sock.sendMessage(jid, { text: titanText, contextInfo: titanContext });
+            }
             break;
 
         case 'download':
@@ -1201,17 +1205,58 @@ async function handleGameInput(sock, jid, sender, input, msg) {
     if (!game || game.status !== 'active') return;
 
     if (game.type === 'math') {
-        if (input.trim() === game.data.answer) {
-            const { getUser, saveDb } = require('./src/plugins/economy');
+        if (game.answered) return;
+        const userAnswer = input.trim();
+        const correctAnswer = game.data.answer;
+        const normalizedUser = parseInt(userAnswer, 10);
+        const normalizedCorrect = parseInt(correctAnswer, 10);
+        if (!isNaN(normalizedUser) && normalizedUser === normalizedCorrect) {
+            game.answered = true;
             const user = getUser(sender);
             user.points += 200;
             user.wins += 1;
             saveDb();
             await sock.sendMessage(jid, { text: `🎉 @${sender.split('@')[0]} got it! You earned *200* Titan Points.`, mentions: [sender] }, { quoted: msg });
             gameStore.delete(jid);
+        } else {
+            await sock.sendMessage(jid, { text: `❌ @${sender.split('@')[0]}, that's not correct. Keep trying!`, mentions: [sender] }, { quoted: msg });
         }
     } else if (game.type === 'hangman') {
-        // Existing hangman logic...
+        const guess = input.trim().toLowerCase();
+        if (!guess || guess.length !== 1 || !/[a-z]/.test(guess)) return;
+        const data = game.data;
+        if (data.guessed.includes(guess)) {
+            await sock.sendMessage(jid, { text: `@${sender.split('@')[0]}, "${guess}" was already guessed.`, mentions: [sender] }, { quoted: msg });
+            return;
+        }
+        data.guessed.push(guess);
+        const word = data.word;
+        if (word.includes(guess)) {
+            const display = word.split('').map(c => data.guessed.includes(c) ? c : '_').join(' ');
+            if (!display.includes('_')) {
+                gameStore.delete(jid);
+                await sock.sendMessage(jid, { text: `🎉 @${sender.split('@')[0]} won! The word was *${word}*!\n🏆 *Victory Royale!*`, mentions: [sender] });
+                return;
+            }
+            await sock.sendMessage(jid, { text: `✅ @${sender.split('@')[0]} guessed *${guess}*! Correct!\n\nWord: \`${display}\``, mentions: [sender] }, { quoted: msg });
+        } else {
+            data.fails += 1;
+            const remaining = data.maxFails - data.fails;
+            const display = word.split('').map(c => data.guessed.includes(c) ? c : '_').join(' ');
+            if (data.fails >= data.maxFails) {
+                gameStore.delete(jid);
+                await sock.sendMessage(jid, { text: `💀 *Game Over!* The word was *${word}*.\nBetter luck next time!` });
+                return;
+            }
+            await sock.sendMessage(jid, { text: `❌ @${sender.split('@')[0]} guessed *${guess}* — wrong! (${remaining}/${data.maxFails} lives left)\n\nWord: \`${display}\``, mentions: [sender] }, { quoted: msg });
+        }
+        const prevIndex = data.currentPlayerIndex;
+        const nextIndex = (prevIndex + 1) % game.players.length;
+        data.currentPlayerIndex = nextIndex;
+        const nextPlayer = game.players[nextIndex];
+        const display = word.split('').map(c => data.guessed.includes(c) ? c : '_').join(' ');
+        await sock.sendMessage(jid, { text: `👉 Turn: @${nextPlayer.split('@')[0]}\n\nWord: \`${display}\``, mentions: [nextPlayer] });
+        gameStore.set(jid, game);
     }
 }
 

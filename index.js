@@ -671,9 +671,14 @@ async function startTitan() {
 
                 // --- GAME INPUT ---
                 const game = gameStore.get(jid);
-                if (game && game.status === 'active' && !text.startsWith(config.prefix)) {
-                    await handleCommand(sock, msg, jid, sender, `_game_input_`, [], text, owner);
-                    continue;
+                if (game && game.status === 'active' && !text.startsWith(config.prefix) && text) {
+                    const isValidGuess = game.type === 'math'
+                        ? /^-?\d+(\.\d+)?$/.test(text.trim())
+                        : /^[a-zA-Z]$/.test(text.trim());
+                    if (isValidGuess) {
+                        await handleCommand(sock, msg, jid, sender, `_game_input_`, [], text, owner);
+                        continue;
+                    }
                 }
 
                 console.log("[PREFIX CHECK]", { text, prefix: config.prefix, starts: text.startsWith(config.prefix), textLen: text.length });
