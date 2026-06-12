@@ -95,7 +95,7 @@ const getGroupSettings = (jid) => {
         groupSettings[jid] = {
             welcome: { enabled: false, text: null },
             goodbye: { enabled: false, text: null },
-            antilink: { mode: 'off', strikes: {} } // mode: off/delete/warn/kick
+            antilink: { mode: 'off' } // mode: off/delete/warn/kick
         };
     }
     return groupSettings[jid];

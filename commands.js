@@ -26,20 +26,25 @@ const ADMIN_COMMANDS = [
 
 // Comprehensive link regex - detects WhatsApp links, URLs, shorteners
 const LINK_PATTERNS = [
-    /https?:\/\/(chat\.whatsapp\.com|wa\.me|whatsapp\.com)\/[^\s]+/gi,
-    /https?:\/\/[^\s]+\.[^\s]{2,}\/[^\s]*/gi,
-    /(bit\.ly|tinyurl\.com|t\.co|goo\.gl|ow\.ly|is\.gd|buff\.ly|youtu\.be|instagram\.com|twitter\.com)\/[^\s]+/gi
+    /https?:\/\/(chat\.whatsapp\.com|wa\.me|whatsapp\.com)\/[^\s]+/i,
+    /https?:\/\/[^\s]+\.[^\s]{2,}(\/[^\s]*)?/i,
+    /https?:\/\/[^\s]+\.[^\s]{2,}/i,
+    /(bit\.ly|tinyurl\.com|t\.co|goo\.gl|ow\.ly|is\.gd|buff\.ly|youtu\.be|instagram\.com|twitter\.com)\/[^\s]+/i
 ];
 
-async function detectLink(text) {
+function detectLink(text) {
     if (!text) return false;
     for (const pattern of LINK_PATTERNS) {
+        pattern.lastIndex = 0;
         if (pattern.test(text)) return true;
     }
     return false;
 }
 
 async function handleAntiLink(sock, msg, jid, text, sender) {
+    // Check global toggle first
+    if (!settings.antilink) return false;
+
     // Get per-group settings
     const gs = getGroupSettings(jid);
     
@@ -54,7 +59,7 @@ async function handleAntiLink(sock, msg, jid, text, sender) {
     }
 
     // Check for links
-    if (!await detectLink(text)) {
+    if (!detectLink(text)) {
         return false;
     }
 
@@ -98,7 +103,9 @@ if (normalizedAdmins.includes(normalizedSender)) {
         if (mode === 'warn') {
             try {
                 await sock.sendMessage(jid, { delete: msg.key });
-            } catch (e) { }
+            } catch (e) {
+                console.error('[TITAN ANTI-LINK] Delete failed:', e.message);
+            }
             
             const strikeCount = addStrike(jid, sender);
             const maxStrikes = 3;
@@ -131,7 +138,9 @@ if (normalizedAdmins.includes(normalizedSender)) {
         if (mode === 'kick') {
             try {
                 await sock.sendMessage(jid, { delete: msg.key });
-            } catch (e) { }
+            } catch (e) {
+                console.error('[TITAN ANTI-LINK] Delete failed:', e.message);
+            }
             
             try {
                 await sock.groupParticipantsUpdate(jid, [sender], 'remove');
@@ -418,7 +427,9 @@ Prefix: *${config.prefix}*
                 }
             }
             
-            gsAnti.antilink = { mode, strikes: {} };
+            gsAnti.antilink = { mode };
+            settings.antilink = mode !== 'off' || Object.values(groupSettings).some(gs => gs.antilink?.mode && gs.antilink.mode !== 'off');
+            saveSettings();
             await updateGroupSettings(jid, 'antilink', gsAnti.antilink);
             
             const modeDesc = {
@@ -544,7 +555,7 @@ Prefix: *${config.prefix}*
                     }
                     
                     // Also check if quoted itself is a stub (already viewed)
-                    if (!viewOnceContent && quoted.messageStubType) {
+                    if (!viewOnceContent && quoted.messageStubType !== undefined) {
                         await sendWithLogo('❌ View once expired or already viewed. Cannot recover 😔');
                         break;
                     }
@@ -626,173 +637,6 @@ Prefix: *${config.prefix}*
                 console.error('[TITAN VV Error]:', e);
                 await sendWithLogo(`❌ Failed to recover view-once: ${e.message}\n\n⚠️ Possible causes:\n• Message already viewed by sender/recipient\n• Media expired\n• WhatsApp server issue`);
             }
-            break;
-
-        case 'antivviewonce':
-        case 'antivv':
-            // This is now handled in the .vv block above for unified view-once handling
-            if (!owner) return;
-            if (!args[0]) {
-                settings.antivviewonce = !settings.antivviewonce;
-                saveSettings();
-                await sendWithLogo(settings.antivviewonce ? '✅ *Anti-VV (Auto):* Silently captures view-once to your DM.' : '❌ *Anti-VV (Auto):* Disabled.');
-                return;
-            }
-            if (args[0] === 'on') {
-                settings.antivviewonce = true;
-                saveSettings();
-                await sendWithLogo('✅ *Anti-VV (Auto):* Enabled.');
-            } else if (args[0] === 'off') {
-                settings.antivviewonce = false;
-                saveSettings();
-                await sendWithLogo('❌ *Anti-VV (Auto):* Disabled.');
-            }
-            break;
-
-        case 'antidelete':
-        case 'antidel':
-            if (!args[0]) {
-                settings.antidelete = !settings.antidelete;
-                saveSettings();
-                await sendWithLogo(settings.antidelete ? '✅ Global Anti-Delete Enabled.' : '❌ Global Anti-Delete Disabled.');
-                return;
-            }
-            if (args[0] === 'on') {
-                settings.antidelete = true;
-                saveSettings();
-                await sendWithLogo('✅ Global Anti-Delete Enabled.');
-            } else if (args[0] === 'off') {
-                settings.antidelete = false;
-                saveSettings();
-                await sendWithLogo('❌ Global Anti-Delete Disabled.');
-            }
-            break;
-
-        case 'link':
-        case 'invite':
-            if (!isGroup(jid)) return sendWithLogo('❌ Groups only!');
-            try {
-                const code = await sock.groupInviteCode(jid);
-                await sendWithLogo(`🔗 *Group Link check it out:*\nhttps://chat.whatsapp.com/${code}`);
-            } catch (e) { await sendWithLogo('❌ Failed. Bot admin?'); }
-            break;
-
-        case 'revoke':
-        case 'reset':
-            if (!isGroup(jid)) return sendWithLogo('❌ Groups only!');
-            try {
-                await sock.groupRevokeInvite(jid);
-                await sendWithLogo('🔄 Group link reset!');
-            } catch (e) { await sendWithLogo('❌ Failed. Bot admin?'); }
-            break;
-
-        case 'hidetag':
-        case 'ht':
-            if (!isGroup(jid)) return sendWithLogo('❌ Groups only!');
-            try {
-                const meta = await getCachedGroupMetadata(sock, jid);
-                const participants = meta.participants || [];
-                const mentions = participants.map(p => p.id);
-                const message = args.join(' ') || '📢';
-                await sock.sendMessage(jid, { text: message, mentions });
-            } catch (e) { await sendWithLogo('❌ Failed.'); }
-            break;
-
-        case 'delete':
-        case 'del':
-            if (!quoted) return sendWithLogo('❌ Reply to a message to delete.');
-            try {
-                const stanzaId = msg.message.extendedTextMessage.contextInfo.stanzaId;
-                const isBotMessage = quotedSender && quotedSender.includes(sock.user.id.split(':')[0]);
-
-                const key = {
-                    remoteJid: jid,
-                    fromMe: isBotMessage,
-                    id: stanzaId,
-                    participant: quotedSender
-                };
-
-                await sock.sendMessage(jid, { delete: key });
-            } catch (e) {
-                await sendWithLogo('❌ Failed to delete. Am I admin?');
-            }
-            break;
-
-        case 'broadcast':
-        case 'bc':
-            await handleAdmin(sock, msg, jid, sender, cmd, args, text, owner, sendWithLogo);
-            break;
-
-        case 'antispam':
-            if (!args[0]) {
-                settings.antispam = !settings.antispam;
-                saveSettings();
-                await sendWithLogo(settings.antispam ? '✅ Global Anti-Spam Enabled.' : '❌ Global Anti-Spam Disabled.');
-                return;
-            }
-            if (args[0] === 'on') {
-                settings.antispam = true;
-                saveSettings();
-                await sendWithLogo('✅ Global Anti-Spam Enabled.');
-            } else if (args[0] === 'off') {
-                settings.antispam = false;
-                saveSettings();
-                await sendWithLogo('❌ Global Anti-Spam Disabled.');
-            }
-            break;
-
-        /* GAME COMMANDS */
-        case 'hangman':
-        case 'math':
-            if (gameStore.has(jid)) return sendWithLogo('❌ A game is already in progress or lobby is open.');
-
-            const isGroupChat = isGroup(jid);
-            const gameType = cmd === 'hangman' ? 'Hangman' : 'Math Quiz';
-
-            if (isGroupChat) {
-                const lobbyMsg = await sock.sendMessage(jid, { text: `🎮 *${gameType} Lobby Open!*\n\nAnyone who wants to play has *5 minutes* to join.\n👉 Reply to this message with *.join* to participate!` });
-                gameStore.set(jid, {
-                    type: cmd,
-                    status: 'lobby',
-                    players: [sender],
-                    startTime: Date.now(),
-                    lobbyMsgId: lobbyMsg.key.id
-                });
-
-                setTimeout(async () => {
-                    const g = gameStore.get(jid);
-                    if (g && g.status === 'lobby') {
-                        if (g.players.length < 2) {
-                            gameStore.delete(jid);
-                            await sock.sendMessage(jid, { text: `⏰ *${gameType} Lobby Expired.* Not enough players joined.` });
-                        } else {
-                            await startGame(sock, jid);
-                        }
-                    }
-                }, 5 * 60 * 1000);
-
-            } else {
-                gameStore.set(jid, {
-                    type: cmd,
-                    status: 'active',
-                    players: [sender, 'bot'],
-                    startTime: Date.now(),
-                    data: {}
-                });
-                await startGame(sock, jid);
-            }
-            break;
-
-        case 'join':
-            if (!isGroup(jid)) return;
-            const lobby = gameStore.get(jid);
-            if (!lobby || lobby.status !== 'lobby') return sendWithLogo('❌ No active lobby to join.');
-            const quotedId = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
-            if (quotedId && quotedId !== lobby.lobbyMsgId) return sendWithLogo('❌ Please reply directly to the Lobby message to join.');
-            if (lobby.players.includes(sender)) return sendWithLogo('❌ You are already in the lobby.');
-            lobby.players.push(sender);
-            gameStore.set(jid, lobby);
-            await sock.sendMessage(jid, { text: `✅ @${sender.split('@')[0]} joined the lobby! (${lobby.players.length} players total)`, mentions: [sender] }, { quoted: msg });
             break;
 
         case 'start':

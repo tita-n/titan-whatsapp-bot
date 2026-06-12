@@ -375,14 +375,18 @@ async function startTitan() {
 
                 const deletedMsg = msgStore.get(messageId);
                 if (deletedMsg) {
-                    const { msg, sender } = deletedMsg;
-                    const caption = `🗑️ *Anti-Delete Detected*\nSender: @${sender.split('@')[0]}\nRecovered Content:`;
-                    const text = getMessageText({ message: msg });
-                    if (text) {
-                        await sock.sendMessage(jid, { text: `${caption}\n\n${text}`, mentions: [sender] });
-                    } else {
-                        const forwardJid = isGroup(jid) ? jid : sender;
-                        await sock.sendMessage(forwardJid, { forward: { key: { remoteJid: forwardJid, id: messageId }, message: msg }, caption: caption, mentions: [sender] });
+                    try {
+                        const { msg, sender } = deletedMsg;
+                        const header = `🗑️ *Anti-Delete Detected*\nSender: @${sender.split('@')[0]}`;
+                        const text = getMessageText({ message: msg });
+                        if (text) {
+                            await sock.sendMessage(jid, { text: `${header}\n\n${text}`, mentions: [sender] });
+                        } else {
+                            await sock.sendMessage(jid, { text: header, mentions: [sender] });
+                            await sock.sendMessage(jid, { forward: { key: { remoteJid: jid, fromMe: false, id: messageId, participant: sender }, message: msg } });
+                        }
+                    } catch (e) {
+                        console.error('[TITAN ANTI-DELETE] Error:', e.message);
                     }
                 }
             }
@@ -510,16 +514,27 @@ async function startTitan() {
         for (const call of calls) {
             if (call.status === 'offer') {
                 console.log(`[TITAN SHIELD] Rejecting call from: ${call.from}`);
-                await sock.rejectCall(call.id, call.from);
+                try {
+                    await sock.rejectCall(call.from, call.id);
+                } catch (e) {
+                    console.error('[TITAN SHIELD] Reject failed:', e.message);
+                }
 
                 const ownerJid = getOwnerJid();
-                const refusalMsg = `🛡️ *TITAN IRON SHIELD*\n\nSorry, my owner @${ownerJid.split('@')[0]} is currently busy. Calls are not allowed.\n\n_Please send a text message instead._`;
-                await sock.sendMessage(call.from, { text: refusalMsg, mentions: [ownerJid] });
+                try {
+                    await sock.sendMessage(call.from, { text: `🛡️ *TITAN IRON SHIELD*\n\nSorry, calls are not allowed. Please send a text message instead.` });
+                } catch (e) {
+                    console.error('[TITAN SHIELD] Refusal send failed:', e.message);
+                }
 
-                await sock.sendMessage(ownerJid, {
-                    text: `🚨 *IRON SHIELD ALERT*\n\nBlocked a call from: @${call.from.split('@')[0]}`,
-                    mentions: [call.from]
-                });
+                try {
+                    await sock.sendMessage(ownerJid, {
+                        text: `🚨 *IRON SHIELD ALERT*\n\nBlocked a call from: @${call.from.split('@')[0]}`,
+                        mentions: [call.from]
+                    });
+                } catch (e) {
+                    console.error('[TITAN SHIELD] Alert send failed:', e.message);
+                }
             }
         }
     });
@@ -586,7 +601,7 @@ async function startTitan() {
 
                 console.log(`[TITAN] ${jid.split('@')[0]} | @${sender.split('@')[0]}: ${text || '(media)'}`);
 
-                if (isGroup(jid)) {
+                if (isGroup(jid) && !fromMe) {
                     if (await handleAntiLink(sock, msg, jid, text, sender)) continue;
                 }
 
@@ -657,14 +672,20 @@ async function startTitan() {
                         } else if (userSpam.count >= 10) {
                             try {
                                 const meta = await getCachedGroupMetadata(sock, jid);
-                                const admins = getGroupAdmins(meta.participants);
+                                if (!meta) {
+                                    console.log('[TITAN ANTI-SPAM] Could not fetch group metadata');
+                                    continue;
+                                }
+                                const admins = getGroupAdmins(meta.participants || []);
                                 const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
                                 if (admins.includes(botId) && !admins.includes(sender)) {
                                     await sock.sendMessage(jid, { text: `🚫 @${sender.split('@')[0]} removed for spamming.`, mentions: [sender] });
                                     await sock.groupParticipantsUpdate(jid, [sender], 'remove');
+                                    continue;
                                 }
-                            } catch (e) { }
-                            continue;
+                            } catch (e) {
+                                console.error('[TITAN ANTI-SPAM] Error:', e.message);
+                            }
                         }
                     }
                 }
