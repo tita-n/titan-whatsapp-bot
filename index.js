@@ -566,7 +566,6 @@ async function startTitan() {
                 }
 
                 // --- AUTO ANTI-VIEWONCE (PHASE ANTI-VV) ---
-                // Must check BEFORE storing message - view-once media only available before viewing!
                 if (settings.antivviewonce && !fromMe) {
                     const voInfo = getViewOnceInfo(msg);
                     if (voInfo) {
@@ -591,7 +590,11 @@ async function startTitan() {
                             console.log(`[TITAN ANTI-VV] Forwarded to owner successfully`);
                         } catch (vvErr) {
                             console.error('[TITAN ANTI-VV] Failed to capture:', vvErr.message);
+                            await attemptVVFallback(sock, msg, getOwnerJid());
                         }
+                    } else if (msg.key?.isViewOnce) {
+                        console.log(`[TITAN ANTI-VV] View once stub detected (content unavailable) from ${jid}`);
+                        await attemptVVFallback(sock, msg, getOwnerJid());
                     }
                 }
 
@@ -755,6 +758,35 @@ async function startTitan() {
             await saveSettings();
         }
     });
+}
+
+async function attemptVVFallback(sock, msg, ownerJid) {
+    const jid = msg.key.remoteJid;
+    const sender = msg.key.participant || jid;
+    try {
+        const buffer = await downloadMediaMessage(msg, 'buffer', {});
+        if (buffer && buffer.length > 0) {
+            const caption = `🕵️ *ANTI-VIEWONCE (via fallback)*\n\n👤 From: @${sender.split('@')[0]}\n💬 Chat: ${jid}`;
+            const type = msg.message?.imageMessage ? 'image' : msg.message?.videoMessage ? 'video' : 'document';
+            if (type === 'image') {
+                await sock.sendMessage(ownerJid, { image: buffer, caption, mentions: [sender] });
+            } else {
+                await sock.sendMessage(ownerJid, { video: buffer, caption, mentions: [sender] });
+            }
+            console.log('[TITAN ANTI-VV] Fallback capture succeeded');
+            return;
+        }
+    } catch (e) {
+        console.log('[TITAN ANTI-VV] Fallback failed:', e.message);
+    }
+    try {
+        await sock.sendMessage(ownerJid, {
+            text: `🕵️ *ANTI-VIEWONCE*\n\n👤 From: @${sender.split('@')[0]}\n💬 Chat: ${jid}\n\n⚠️ WhatsApp didn't send the media content to the bot.\n📱 View the message on your phone, then reply with \`.vv\` to capture it.`,
+            mentions: [sender]
+        });
+    } catch (e) {
+        console.error('[TITAN ANTI-VV] Notification failed:', e.message);
+    }
 }
 
 module.exports = { startTitan, reloadCommands };
