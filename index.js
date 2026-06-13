@@ -11,7 +11,7 @@ const pino = require('pino');
 const path = require('path');
 
 // Modules
-const { config, isOwner, isGroup, isChannel, getMessageText, getOwnerJid, settings, saveSettings, msgStore, spamTracker, gameStore, getCachedGroupMetadata, isViewOnceStub, getViewOnceInfo, isBotAdmin, getGroupSettings } = require('./utils');
+const { config, isOwner, isGroup, isChannel, getMessageText, getOwnerJid, settings, saveSettings, msgStore, spamTracker, gameStore, pendingVvKeys, getCachedGroupMetadata, isViewOnceStub, getViewOnceInfo, isBotAdmin, getGroupSettings } = require('./utils');
 const cron = require('node-cron');
 
 // --- DYNAMIC COMMAND LOADER (PHASE 17) ---
@@ -566,35 +566,61 @@ async function startTitan() {
                 }
 
                 // --- AUTO ANTI-VIEWONCE (PHASE ANTI-VV) ---
-                if (settings.antivviewonce && !fromMe) {
-                    const voInfo = getViewOnceInfo(msg);
-                    if (voInfo) {
-                        console.log(`[TITAN ANTI-VV] View once detected! Type: ${voInfo.type} from @${voInfo.sender.split('@')[0]}`);
-                        try {
-                            const mediaContent = voInfo.content.imageMessage || voInfo.content.videoMessage || voInfo.content.audioMessage;
-                            if (!mediaContent) throw new Error('No media content found');
-                            const stream = await downloadContentFromMessage(mediaContent, voInfo.type);
-                            let buffer = Buffer.from([]);
-                            for await (const chunk of stream) {
-                                buffer = Buffer.concat([buffer, chunk]);
+                if (settings.antivviewonce) {
+                    const isPendingVv = pendingVvKeys.has(msg.key?.id);
+                    if (isPendingVv) {
+                        pendingVvKeys.delete(msg.key.id);
+                        console.log(`[TITAN ANTI-VV] Pending VV response received for ${msg.key.id}`);
+                    }
+                    if (!fromMe || isPendingVv) {
+                        const voInfo = getViewOnceInfo(msg);
+                        if (voInfo) {
+                            console.log(`[TITAN ANTI-VV] View once detected! Type: ${voInfo.type} from @${voInfo.sender.split('@')[0]}`);
+                            try {
+                                const mediaContent = voInfo.content.imageMessage || voInfo.content.videoMessage || voInfo.content.audioMessage;
+                                if (!mediaContent) throw new Error('No media content found');
+                                const stream = await downloadContentFromMessage(mediaContent, voInfo.type);
+                                let buffer = Buffer.from([]);
+                                for await (const chunk of stream) {
+                                    buffer = Buffer.concat([buffer, chunk]);
+                                }
+                                const caption = `🕵️ *ANTI-VIEWONCE CATCH*\n\n👤 From: @${voInfo.sender.split('@')[0]}\n💬 Chat: ${voInfo.jid}\n⏰ Time: ${new Date(voInfo.timestamp * 1000).toLocaleString()}\n📎 Type: ${voInfo.type.toUpperCase()}`;
+                                
+                                if (voInfo.type === 'image') {
+                                    await sock.sendMessage(getOwnerJid(), { image: buffer, caption, mentions: [voInfo.sender] });
+                                } else if (voInfo.type === 'video') {
+                                    await sock.sendMessage(getOwnerJid(), { video: buffer, caption, mentions: [voInfo.sender] });
+                                } else if (voInfo.type === 'audio') {
+                                    await sock.sendMessage(getOwnerJid(), { audio: buffer, mimetype: 'audio/mp4', caption: caption.replace(voInfo.type.toUpperCase(), 'AUDIO 🎤'), mentions: [voInfo.sender] });
+                                }
+                                console.log(`[TITAN ANTI-VV] Forwarded to owner successfully`);
+                                // Continue to next message in batch (don't return, other msgs need processing)
+                            } catch (vvErr) {
+                                console.error('[TITAN ANTI-VV] Failed to capture:', vvErr.message);
+                                if (!isPendingVv) {
+                                    await attemptVVFallback(sock, msg, getOwnerJid());
+                                }
                             }
-                            const caption = `🕵️ *ANTI-VIEWONCE CATCH*\n\n👤 From: @${voInfo.sender.split('@')[0]}\n💬 Chat: ${voInfo.jid}\n⏰ Time: ${new Date(voInfo.timestamp * 1000).toLocaleString()}\n📎 Type: ${voInfo.type.toUpperCase()}`;
-                            
-                            if (voInfo.type === 'image') {
-                                await sock.sendMessage(getOwnerJid(), { image: buffer, caption, mentions: [voInfo.sender] });
-                            } else if (voInfo.type === 'video') {
-                                await sock.sendMessage(getOwnerJid(), { video: buffer, caption, mentions: [voInfo.sender] });
-                            } else if (voInfo.type === 'audio') {
-                                await sock.sendMessage(getOwnerJid(), { audio: buffer, mimetype: 'audio/mp4', caption: caption.replace(voInfo.type.toUpperCase(), 'AUDIO 🎤'), mentions: [voInfo.sender] });
+                        } else if (msg.key?.isViewOnce) {
+                            console.log(`[TITAN ANTI-VV] View once stub detected, requesting phone to re-upload...`);
+                            pendingVvKeys.add(msg.key.id);
+                            try {
+                                await sock.sendPeerDataOperationMessage({
+                                    placeholderMessageResendRequest: [{ messageKey: msg.key }],
+                                    peerDataOperationRequestType: proto.Message.PeerDataOperationRequestType.PLACEHOLDER_MESSAGE_RESEND
+                                });
+                                setTimeout(() => {
+                                    if (pendingVvKeys.has(msg.key.id)) {
+                                        pendingVvKeys.delete(msg.key.id);
+                                        attemptVVFallback(sock, msg, getOwnerJid());
+                                    }
+                                }, 10000);
+                            } catch (pdoErr) {
+                                console.error('[TITAN ANTI-VV] PDO request failed:', pdoErr.message);
+                                pendingVvKeys.delete(msg.key.id);
+                                await attemptVVFallback(sock, msg, getOwnerJid());
                             }
-                            console.log(`[TITAN ANTI-VV] Forwarded to owner successfully`);
-                        } catch (vvErr) {
-                            console.error('[TITAN ANTI-VV] Failed to capture:', vvErr.message);
-                            await attemptVVFallback(sock, msg, getOwnerJid());
                         }
-                    } else if (msg.key?.isViewOnce) {
-                        console.log(`[TITAN ANTI-VV] View once stub detected (content unavailable) from ${jid}`);
-                        await attemptVVFallback(sock, msg, getOwnerJid());
                     }
                 }
 

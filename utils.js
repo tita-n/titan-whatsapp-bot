@@ -43,6 +43,7 @@ let settings = {
 const msgStore = new Map();
 const spamTracker = new Map();
 const gameStore = new Map();
+const pendingVvKeys = new Set(); // Message IDs awaiting phone re-upload for anti-VV
 
 const settingsPath = path.join(config.dataPath, 'settings.json');
 const msgStorePath = path.join(config.dataPath, 'messages.json');
@@ -454,6 +455,7 @@ module.exports = {
     msgStore,
     spamTracker,
     gameStore,
+    pendingVvKeys,
     getOwnerJid,
     isOwner,
     isGroup,
