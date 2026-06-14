@@ -164,17 +164,17 @@ const loadMsgStore = () => {
 };
 
 // Graceful Exit
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
     console.log('[TITAN] Shutting down... Saving data.');
     saveSettings();
     saveMsgStore();
-    process.exit(0);
+    // Don't process.exit here — index.js gracefulShutdown handles it with 2s creds flush
 });
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
+    console.log('[TITAN] Shutting down... Saving data.');
     saveSettings();
     saveMsgStore();
-    process.exit(0);
 });
 
 // Auto-load on require

@@ -143,6 +143,9 @@ async function gracefulShutdown(signal) {
         }
     }
     
+    // Wait for pending creds writes to flush before exiting
+    console.log('[TITAN] Waiting for creds flush...');
+    await new Promise(r => setTimeout(r, 2000));
     process.exit(0);
 }
 
@@ -168,6 +171,25 @@ const getBackoffDelay = (attempt) => {
 
 async function startTitan() {
     console.log('[TITAN] Starting...');
+    
+    // Validate creds.json before loading auth - auto-restore from backup if corrupt
+    const credsFile = path.join(config.authPath, 'creds.json');
+    const credsBak = credsFile + '.bak';
+    try {
+        if (fs.existsSync(credsFile)) {
+            const raw = fs.readFileSync(credsFile, 'utf-8');
+            const parsed = JSON.parse(raw);
+            if (!parsed.me?.id) throw new Error('incomplete creds');
+        }
+    } catch (e) {
+        console.warn('[TITAN] creds.json is corrupt:', e.message);
+        if (fs.existsSync(credsBak)) {
+            fs.copyFileSync(credsBak, credsFile);
+            console.log('[TITAN] Restored creds from backup — no re-pair needed');
+        } else {
+            console.warn('[TITAN] No backup found. Will attempt to use existing auth (may fail).');
+        }
+    }
     
     // On first start, wait 5 seconds to let any old instance die on WhatsApp's end
     if (reconnectAttempts === 0) {
@@ -249,6 +271,18 @@ async function startTitan() {
 
     // Store socket reference for graceful shutdown
     currentSock = sock;
+
+    // --- PERIODIC CREDS BACKUP (prevents corruption from Ctrl+C) ---
+    setInterval(() => {
+        try {
+            const credsFile = path.join(config.authPath, 'creds.json');
+            if (fs.existsSync(credsFile)) {
+                fs.copyFileSync(credsFile, credsFile + '.bak');
+            }
+        } catch (e) {
+            console.error('[TITAN] Creds backup failed:', e.message);
+        }
+    }, 30000);
 
     // --- KEEP ALIVE PING ---
     const keepAlive = setInterval(async () => {
