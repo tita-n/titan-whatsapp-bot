@@ -9,23 +9,14 @@ async function handleTools(sock, msg, jid, sender, cmd, args, text, sendWithLogo
         case 'imagine':
             if (!args[0]) return sendWithLogo(`❌ Usage: ${config.prefix}imagine [prompt]`);
             try {
-                await sendWithLogo('⌛ *TITAN is imagining your prompt...* (Craiyon AI)');
-                const res = await axios.post('https://api.craiyon.com/v3', {
-                    prompt: args.join(' '),
-                    token: null,
-                    version: "c4611593-07a9-4b2a-8958-895f3eb487d5", // Current version
-                    model: "art"
-                }, { timeout: 60000 });
-
-                if (res.data?.images?.length > 0) {
-                    const buffer = Buffer.from(res.data.images[0], 'base64');
-                    await sock.sendMessage(jid, { image: buffer, caption: `🎨 *Imagine:* ${args.join(' ')}` }, { quoted: msg });
-                } else {
-                    throw new Error('No images returned');
-                }
+                const prompt = args.join(' ');
+                await sendWithLogo(`⌛ *TITAN AI Visualizer:* Rendering "${prompt}"...`);
+                const imageUrl = `https://pollinations.ai/p/${encodeURIComponent(prompt)}?width=1024&height=1024&seed=${Math.floor(Math.random() * 10000)}&nologo=true&enhance=true`;
+                const imageRes = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 30000 });
+                await sock.sendMessage(jid, { image: Buffer.from(imageRes.data), caption: `🎨 *Imagine:* ${prompt}` }, { quoted: msg });
             } catch (e) {
-                console.error('[TITAN TOOLS] Craiyon Error:', e.message);
-                await sendWithLogo('❌ AI Image service is heavy. Try again with a shorter prompt.');
+                console.error('[TITAN TOOLS] Imagine Error:', e.message);
+                await sendWithLogo('❌ AI Image generation failed. Try again with a different prompt.');
             }
             break;
 
@@ -34,15 +25,12 @@ async function handleTools(sock, msg, jid, sender, cmd, args, text, sendWithLogo
             const trText = args.join(' ') || (quoted ? (quoted.conversation || quoted.extendedTextMessage?.text) : null);
             if (!trText) return sendWithLogo(`❌ Usage: ${config.prefix}translate [text] OR reply to message.`);
             try {
-                const res = await axios.post('https://libretranslate.de/translate', {
-                    q: trText,
-                    source: "auto",
-                    target: "en",
-                    format: "text"
-                });
-                await sendWithLogo(`🌍 *Translation (to EN):*\n\n${res.data.translatedText}`);
+                const res = await axios.get(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(trText)}`);
+                const translated = res.data[0].map(item => item[0]).filter(Boolean).join(' ');
+                await sendWithLogo(`🌍 *Translation (to EN):*\n\n${translated}`);
             } catch (e) {
-                await sendWithLogo('❌ Translation service temp down. Try again later.');
+                console.error('[TITAN TOOLS] Translate Error:', e.message);
+                await sendWithLogo('❌ Translation service temporarily unavailable.');
             }
             break;
 
@@ -72,10 +60,11 @@ async function handleTools(sock, msg, jid, sender, cmd, args, text, sendWithLogo
             if (!code) return sendWithLogo('❌ Provide code or reply to a message with code.');
             try {
                 await sendWithLogo('✨ *Generating Carbon snippet...*');
-                const carbonUrl = `https://carbonnowsh.herokuapp.com/?code=${encodeURIComponent(code)}&theme=dracula&backgroundColor=rgba(171,184,195,1)&paddingVertical=56px&paddingHorizontal=56px`;
-                const imageRes = await axios.get(carbonUrl, { responseType: 'arraybuffer' });
+                const carbonUrl = `https://quickchart.io/carbon?code=${encodeURIComponent(code)}&theme=dracula`;
+                const imageRes = await axios.get(carbonUrl, { responseType: 'arraybuffer', timeout: 20000 });
                 await sock.sendMessage(jid, { image: Buffer.from(imageRes.data), caption: '💻 *Carbon Snippet*' }, { quoted: msg });
             } catch (e) {
+                console.error('[TITAN TOOLS] Carbon Error:', e.message);
                 await sendWithLogo('❌ Carbon service error. Try again later.');
             }
             break;

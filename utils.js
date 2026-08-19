@@ -244,10 +244,19 @@ const getMessageText = (msg) => {
         '';
 };
 
-// Metadata Cache (JID -> { data, timestamp })
+// Metadata Cache (JID -> { data, timestamp }) with size cap to prevent memory leaks
 const metadataCache = new Map();
 
 const getCachedGroupMetadata = async (sock, jid) => {
+    // Auto-prune old metadata cache if size exceeds 200
+    if (metadataCache.size > 200) {
+        const now = Date.now();
+        for (const [k, v] of metadataCache.entries()) {
+            if (now - v.timestamp > 5 * 60 * 1000) {
+                metadataCache.delete(k);
+            }
+        }
+    }
     const cached = metadataCache.get(jid);
     if (cached && (Date.now() - cached.timestamp < 5 * 60 * 1000)) { // 5 min cache
         return cached.data;
@@ -448,6 +457,65 @@ const isViewOnceMessage = (msg) => {
     return false;
 };
 
+/**
+ * Export the entire auth directory (creds + prekeys + app state) as a Base64 string
+ */
+function exportSessionBundle(authPath) {
+    try {
+        if (!fs.existsSync(authPath)) return null;
+        const files = fs.readdirSync(authPath);
+        const bundle = {};
+        for (const file of files) {
+            if (file.endsWith('.json')) {
+                bundle[file] = fs.readFileSync(path.join(authPath, file), 'utf-8');
+            }
+        }
+        if (!bundle['creds.json']) return null;
+        return Buffer.from(JSON.stringify(bundle)).toString('base64');
+    } catch (e) {
+        console.error('[TITAN] Session export error:', e.message);
+        return null;
+    }
+}
+
+/**
+ * Restore session from Base64 string (handles multi-file bundle & legacy creds.json)
+ */
+function restoreSessionFromId(sessionId, authPath) {
+    if (!sessionId) return false;
+    try {
+        let sid = sessionId.trim();
+        if (sid.includes(':')) sid = sid.split(':')[1];
+        if (sid.includes('~')) sid = sid.split('~')[1];
+
+        let decodedRaw = sid.startsWith('{') ? sid : Buffer.from(sid, 'base64').toString('utf-8');
+        const parsed = JSON.parse(decodedRaw);
+
+        // Check if multi-file bundle
+        if (parsed['creds.json']) {
+            console.log('[TITAN] Restoring multi-file session bundle...');
+            fs.ensureDirSync(authPath);
+            for (const [filename, content] of Object.entries(parsed)) {
+                if (filename.endsWith('.json')) {
+                    const strContent = typeof content === 'string' ? content : JSON.stringify(content);
+                    fs.writeFileSync(path.join(authPath, filename), strContent);
+                }
+            }
+            console.log('[TITAN] Multi-file session bundle restored successfully!');
+            return true;
+        } else if (parsed.me || parsed.noiseKey) {
+            // Legacy creds.json format
+            console.log('[TITAN] Restoring single creds.json session...');
+            fs.ensureDirSync(authPath);
+            fs.writeFileSync(path.join(authPath, 'creds.json'), typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2));
+            return true;
+        }
+    } catch (e) {
+        console.error('[TITAN] Session decode error:', e.message);
+    }
+    return false;
+}
+
 module.exports = {
     config,
     settings,
@@ -479,5 +547,8 @@ module.exports = {
     extractViewOnceContent,
     detectViewOnceType,
     getViewOnceInfo,
-    isViewOnceMessage
+    isViewOnceMessage,
+    // Session Bundle Helpers
+    exportSessionBundle,
+    restoreSessionFromId
 };

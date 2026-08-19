@@ -30,7 +30,21 @@ async function handleAdmin(sock, msg, jid, sender, cmd, args, text, owner, sendW
 
         case 'block':
         case 'unblock':
-            // Logic for blocking users from bot
+            let target = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || 
+                         msg.message?.extendedTextMessage?.contextInfo?.participant;
+            if (!target && args[0]) {
+                const clean = args[0].replace('@', '').replace(/[^0-9]/g, '');
+                if (clean) target = `${clean}@s.whatsapp.net`;
+            }
+            if (!target) return sendWithLogo(`❌ Usage: ${config.prefix}${cmd} @user or reply to message.`);
+
+            try {
+                const action = cmd === 'block' ? 'block' : 'unblock';
+                await sock.updateBlockStatus(target, action);
+                await sendWithLogo(`✅ User @${target.split('@')[0]} has been ${action}ed!`, [target]);
+            } catch (e) {
+                await sendWithLogo(`❌ Failed to ${cmd} user: ${e.message}`);
+            }
             break;
     }
 }

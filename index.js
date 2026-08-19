@@ -11,7 +11,7 @@ const pino = require('pino');
 const path = require('path');
 
 // Modules
-const { config, isOwner, isGroup, isChannel, getMessageText, getOwnerJid, settings, saveSettings, msgStore, spamTracker, gameStore, pendingVvKeys, getCachedGroupMetadata, isViewOnceStub, getViewOnceInfo, isBotAdmin, getGroupSettings } = require('./utils');
+const { config, isOwner, isGroup, isChannel, getMessageText, getOwnerJid, settings, saveSettings, msgStore, spamTracker, gameStore, pendingVvKeys, getCachedGroupMetadata, isViewOnceStub, getViewOnceInfo, isBotAdmin, getGroupSettings, exportSessionBundle, restoreSessionFromId } = require('./utils');
 const cron = require('node-cron');
 
 // --- DYNAMIC COMMAND LOADER (PHASE 17) ---
@@ -39,61 +39,42 @@ fs.ensureDirSync(config.authPath);
 fs.ensureDirSync(config.dataPath);
 fs.ensureDirSync(config.downloadPath);
 
-// --- UNIVERSAL SESSION ID DECODER ---
+// --- UNIVERSAL SESSION ID DECODER (FULL BUNDLE SUPPORT) ---
 // Only use SESSION_ID if PAIRING_NUMBER is not set (fresh pairing preferred)
 if (process.env.SESSION_ID && !process.env.PAIRING_NUMBER) {
     const credsPath = path.join(config.authPath, 'creds.json');
-    let shouldDecode = false;
+    let shouldRestore = !fs.existsSync(credsPath);
 
-    if (!fs.existsSync(credsPath)) {
-        shouldDecode = true;
-    } else {
+    if (!shouldRestore) {
         try {
             const currentCreds = JSON.parse(fs.readFileSync(credsPath, 'utf-8').trim());
             const sid = process.env.SESSION_ID.trim();
-            let decodedRaw;
-            if (sid.startsWith('{')) {
-                decodedRaw = sid;
-            } else {
-                let cleanSid = sid;
-                if (cleanSid.includes(':')) cleanSid = cleanSid.split(':')[1];
-                if (cleanSid.includes('~')) cleanSid = cleanSid.split('~')[1];
-                decodedRaw = Buffer.from(cleanSid, 'base64').toString('utf-8');
-            }
-            const decodedCreds = JSON.parse(decodedRaw);
+            let decodedRaw = sid.startsWith('{') ? sid : Buffer.from(sid.includes(':') ? sid.split(':')[1] : sid.includes('~') ? sid.split('~')[1] : sid, 'base64').toString('utf-8');
+            const decodedParsed = JSON.parse(decodedRaw);
+            const decodedCreds = decodedParsed['creds.json'] ? JSON.parse(decodedParsed['creds.json']) : decodedParsed;
             const currentId = currentCreds.me?.id || '';
             const decodedId = decodedCreds.me?.id || '';
-            if (currentId.split(':')[0] !== decodedId.split(':')[0]) {
-                console.log('[TITAN] SESSION_ID belongs to a different account. Wiping...');
-                shouldDecode = true;
+            if (currentId && decodedId && currentId.split(':')[0] !== decodedId.split(':')[0]) {
+                console.log('[TITAN] SESSION_ID belongs to a different account. Restoring new session...');
+                shouldRestore = true;
             } else {
                 console.log('[TITAN] SESSION_ID matches current account. Keeping auth intact.');
             }
         } catch (e) {
-            shouldDecode = true;
+            shouldRestore = true;
         }
     }
 
-    if (shouldDecode) {
-        try {
-            let sid = process.env.SESSION_ID.trim();
-            let decoded;
-            if (sid.startsWith('{')) { decoded = sid; }
-            else {
-                if (sid.includes(':')) sid = sid.split(':')[1];
-                if (sid.includes('~')) sid = sid.split('~')[1];
-                decoded = Buffer.from(sid, 'base64').toString('utf-8');
-            }
-            JSON.parse(decoded);
-            fs.removeSync(config.authPath);
-            fs.ensureDirSync(config.authPath);
-            fs.writeFileSync(credsPath, decoded);
-            console.log('[TITAN] Session Clean Slate.');
-        } catch (e) { }
+    if (shouldRestore) {
+        fs.removeSync(config.authPath);
+        fs.ensureDirSync(config.authPath);
+        restoreSessionFromId(process.env.SESSION_ID, config.authPath);
     }
 }
 const app = express();
 app.get('/', (req, res) => res.send('TITAN BOT IS ACTIVE 🚀'));
+app.get('/health', (req, res) => res.json({ status: 'OK', uptime: process.uptime() }));
+app.get('/ping', (req, res) => res.send('PONG'));
 
 const server = app.listen(config.port, '0.0.0.0', () => console.log(`[TITAN] Server on ${config.port}`));
 server.on('error', (err) => {
@@ -469,16 +450,12 @@ async function startTitan() {
             }
 
             // --- SESSION EXPORTER ---
-            if (!process.env.SESSION_ID) {
-                try {
-                    const credsFile = path.join(config.authPath, 'creds.json');
-                    if (fs.existsSync(credsFile)) {
-                        const creds = fs.readFileSync(credsFile, 'utf-8');
-                        const sessionString = Buffer.from(creds).toString('base64');
-                        await sock.sendMessage(getOwnerJid(), { text: `⚠️ *SESSION BACKUP*\n\nSESSION_ID:\n\n${sessionString}` });
-                    }
-                } catch (e) { }
-            }
+            try {
+                const sessionBundleString = exportSessionBundle(config.authPath);
+                if (sessionBundleString && !process.env.SESSION_ID) {
+                    await sock.sendMessage(getOwnerJid(), { text: `⚠️ *SESSION BACKUP (FULL BUNDLE)*\n\nCopy this key to your SESSION_ID env variable to keep session online across redeploys:\n\n${sessionBundleString}` });
+                }
+            } catch (e) { }
 
             // --- AUTO-JOIN ---
             try {
@@ -781,21 +758,19 @@ async function startTitan() {
                 const cmd = args.shift().toLowerCase();
                 const cmdStart = Date.now();
 
-                // --- NUCLEAR SPEED: NON-BLOCKING EXECUTION ---
+                // --- COMMAND EXECUTION WITH ACCURATE STATUS REACTIONS ---
                 try {
                     sock.sendMessage(jid, { react: { text: '⏳', key: msg.key } }).catch(() => { });
                     sock.sendPresenceUpdate('composing', jid).catch(() => { });
 
-                    // Fire and forget (Command internally handles its own flow)
-                    handleCommand(sock, msg, jid, sender, cmd, args, text, owner, cmdStart).catch(cmdErr => {
-                        console.error('[TITAN LIGHTNING ERR]', cmdErr);
-                        sock.sendMessage(jid, { react: { text: '❌', key: msg.key } }).catch(() => { });
-                    });
+                    await handleCommand(sock, msg, jid, sender, cmd, args, text, owner, cmdStart);
 
                     sock.sendMessage(jid, { react: { text: '✅', key: msg.key } }).catch(() => { });
                     sock.sendPresenceUpdate('paused', jid).catch(() => { });
                 } catch (err) {
-                    console.error('[TITAN DISPATCH ERR]', err);
+                    console.error('[TITAN COMMAND ERR]', err);
+                    sock.sendMessage(jid, { react: { text: '❌', key: msg.key } }).catch(() => { });
+                    sock.sendPresenceUpdate('paused', jid).catch(() => { });
                 }
 
             } catch (e) {

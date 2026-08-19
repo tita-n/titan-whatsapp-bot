@@ -2,6 +2,8 @@ const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 const fs = require('fs-extra');
 const path = require('path');
 const { exec } = require('child_process');
+const util = require('util');
+const execPromise = util.promisify(exec);
 const { config } = require('../../utils');
 
 async function handleMediaConvert(sock, msg, jid, sender, cmd, sendWithLogo) {
@@ -44,32 +46,36 @@ async function handleMediaConvert(sock, msg, jid, sender, cmd, sendWithLogo) {
     const isSticker = quoted.stickerMessage;
     if (!isSticker) return sendWithLogo('❌ That is not a sticker.');
 
+    const tmpFile = path.join(config.downloadPath, `tmp_${Date.now()}.webp`);
+    const outFile = path.join(config.downloadPath, `out_${Date.now()}.${cmd === 'toimage' ? 'png' : 'mp4'}`);
+
     try {
         await sock.sendMessage(jid, { text: '🔄 *Converting media...* Please wait.' });
         const buffer = await downloadMediaMessage({ message: quoted }, 'buffer', {});
-        const tmpFile = path.join(config.downloadPath, `tmp_${Date.now()}.webp`);
-        const outFile = path.join(config.downloadPath, `out_${Date.now()}.${cmd === 'toimage' ? 'png' : 'mp4'}`);
 
         fs.writeFileSync(tmpFile, buffer);
 
         if (cmd === 'toimage') {
-            // Use ffmpeg to convert webp to png
-            exec(`ffmpeg -i ${tmpFile} ${outFile}`, async (err) => {
-                if (err) throw err;
+            await execPromise(`ffmpeg -y -i "${tmpFile}" "${outFile}"`);
+            if (fs.existsSync(outFile)) {
                 await sock.sendMessage(jid, { image: fs.readFileSync(outFile), caption: '✅ Successfully converted to Image.' }, { quoted: msg });
-                cleanup([tmpFile, outFile]);
-            });
+            } else {
+                throw new Error('Output image file not created');
+            }
         } else {
             // tovideo (requires animated sticker)
-            exec(`ffmpeg -i ${tmpFile} -pix_fmt yuv420p -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" ${outFile}`, async (err) => {
-                if (err) throw err;
+            await execPromise(`ffmpeg -y -i "${tmpFile}" -pix_fmt yuv420p -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" "${outFile}"`);
+            if (fs.existsSync(outFile)) {
                 await sock.sendMessage(jid, { video: fs.readFileSync(outFile), caption: '✅ Successfully converted to Video.' }, { quoted: msg });
-                cleanup([tmpFile, outFile]);
-            });
+            } else {
+                throw new Error('Output video file not created');
+            }
         }
     } catch (e) {
-        console.error('[TITAN MEDIA] Error:', e);
-        await sendWithLogo('❌ Conversion failed. Ensure you reply to an actual sticker.');
+        console.error('[TITAN MEDIA] Conversion Error:', e.message);
+        await sendWithLogo(`❌ Conversion failed: ${e.message.includes('ffmpeg') ? 'FFmpeg binary missing or media format invalid.' : 'Reply to an actual sticker.'}`);
+    } finally {
+        cleanup([tmpFile, outFile]);
     }
 }
 

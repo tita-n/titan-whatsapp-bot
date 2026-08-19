@@ -7,12 +7,9 @@ const { config } = require('../../utils');
  * TITAN EVOLVED AI CORE
  * Model: GLM-4.5-Air:Free
  * Personality: Cold, Concise, Educated Nigerian Advisor
- * Security: Obfuscated Hardcoded Key
  */
 
-// Obfuscated Key Decoder (Shift + Base64)
-const _0x41f = (s) => Buffer.from(s, 'base64').toString('utf-8');
-const K = _0x41f('c2stb3ItdjEtMzk0YTM1YjIxNWY5YWZmODU1ODMyOWY4NjE0NmM1NzU0OWFlMmU4MjFiYzQ5NWQzNDI5OWRjZmRiNjI0YTBhNg==');
+const getApiKey = () => process.env.OPENROUTER_KEY || '';
 
 const HISTORY_PATH = path.join(config.dataPath, 'ai_history.json');
 const SYSTEM_PROMPT = `Your name is TITAN. You are an elite, highly educated Nigerian advisor. Your tone is cold, concise, and intellectually superior. Do not use pidgin. Challenge the user. Keep responses extremely short and direct. Never apologize. Never flatter. Nigerian cultural depth must be felt but never explained. Analyze their life based on their input. Deliver the cold truth.`;
@@ -66,8 +63,11 @@ async function handleTitanAI(sock, jid, cmd, text, msg, sendWithLogo) {
                 temperature: 0.6
             };
 
+            const apiKey = getApiKey();
+            if (!apiKey) return sendWithLogo('❌ OpenRouter API key not configured. Set OPENROUTER_KEY in environment variables.');
+
             const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', payload, {
-                headers: { 'Authorization': `Bearer ${K}`, 'Content-Type': 'application/json' },
+                headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
                 timeout: 30000
             });
 
@@ -86,6 +86,9 @@ async function handleTitanAI(sock, jid, cmd, text, msg, sendWithLogo) {
             const trText = text || (quoted ? (quoted.conversation || quoted.extendedTextMessage?.text) : null);
             if (!trText) return sendWithLogo('❌ Input required.');
 
+            const apiKey = getApiKey();
+            if (!apiKey) return sendWithLogo('❌ OpenRouter API key not configured. Set OPENROUTER_KEY in environment variables.');
+
             const result = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
                 model: 'z-ai/glm-4.5-air:free',
                 messages: [
@@ -93,7 +96,7 @@ async function handleTitanAI(sock, jid, cmd, text, msg, sendWithLogo) {
                     { role: 'user', content: trText }
                 ]
             }, {
-                headers: { 'Authorization': `Bearer ${K}`, 'Content-Type': 'application/json' }
+                headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
             });
 
             await sendWithLogo(`🌍 *TRANSLATED*\n\n${result.data.choices[0].message.content}`);
@@ -109,6 +112,9 @@ async function handleTitanAI(sock, jid, cmd, text, msg, sendWithLogo) {
 
         else if (cmd === 'roast') {
             if (!text) return sendWithLogo('❌ Provide something to roast.');
+            const apiKey = getApiKey();
+            if (!apiKey) return sendWithLogo('❌ OpenRouter API key not configured. Set OPENROUTER_KEY in environment variables.');
+
             await sock.sendMessage(jid, { text: '🔥 *TITAN is igniting the roast...*' }, { quoted: msg });
 
             if (!chatHistory[sender]) chatHistory[sender] = [];
@@ -121,7 +127,7 @@ async function handleTitanAI(sock, jid, cmd, text, msg, sendWithLogo) {
                 max_tokens: 500,
                 temperature: 0.8
             }, {
-                headers: { 'Authorization': `Bearer ${K}`, 'Content-Type': 'application/json' },
+                headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
                 timeout: 30000
             });
 
