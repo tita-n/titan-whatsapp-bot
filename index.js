@@ -72,9 +72,264 @@ if (process.env.SESSION_ID && !process.env.PAIRING_NUMBER) {
     }
 }
 const app = express();
-app.get('/', (req, res) => res.send('TITAN BOT IS ACTIVE 🚀'));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 app.get('/health', (req, res) => res.json({ status: 'OK', uptime: process.uptime() }));
 app.get('/ping', (req, res) => res.send('PONG'));
+
+app.get('/api/status', (req, res) => {
+    const isConnected = !!(currentSock && currentSock.user);
+    const bundle = isConnected ? exportSessionBundle(config.authPath) : null;
+    res.json({
+        connected: isConnected,
+        user: currentSock?.user?.id || null,
+        sessionBundle: bundle
+    });
+});
+
+app.post('/api/pair', async (req, res) => {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ ok: false, error: 'Phone number required' });
+
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    if (!cleanPhone) return res.status(400).json({ ok: false, error: 'Invalid phone number' });
+
+    if (!currentSock) {
+        return res.status(500).json({ ok: false, error: 'Bot socket initializing... Please try again in 5 seconds.' });
+    }
+
+    try {
+        console.log('[TITAN WEB PAIR] Requesting code for:', cleanPhone);
+        const code = await currentSock.requestPairingCode(cleanPhone);
+        res.json({ ok: true, code });
+    } catch (e) {
+        console.error('[TITAN WEB PAIR] Error:', e.message);
+        res.status(500).json({ ok: false, error: e.message || 'Failed to request pairing code' });
+    }
+});
+
+// Embedded Web Pairing Portal
+app.get(['/', '/pair'], (req, res) => {
+    const isConnected = !!(currentSock && currentSock.user);
+    const sessionBundle = isConnected ? (exportSessionBundle(config.authPath) || '') : '';
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TITAN Bot - Web Pairing Portal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0d1117;
+            color: #c9d1d9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 16px;
+            padding: 32px;
+            max-width: 520px;
+            width: 100%;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            text-align: center;
+        }
+        .logo { font-size: 42px; margin-bottom: 12px; }
+        h1 { font-size: 26px; font-weight: 800; color: #58a6ff; margin-bottom: 8px; }
+        p.subtitle { color: #8b949e; font-size: 14px; margin-bottom: 24px; }
+        .status-badge {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 13px;
+            margin-bottom: 24px;
+        }
+        .status-online { background: rgba(46, 160, 67, 0.2); color: #3fb950; border: 1px solid #2ea043; }
+        .status-offline { background: rgba(210, 153, 34, 0.2); color: #d29922; border: 1px solid #d29922; }
+        .input-group { margin-bottom: 20px; text-align: left; }
+        label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #8b949e; }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 12px 16px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            color: #f0f6fc;
+            font-size: 15px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input[type="text"]:focus { border-color: #58a6ff; }
+        button {
+            width: 100%;
+            padding: 14px;
+            background: #238636;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover { background: #2ea043; }
+        button:disabled { background: #30363d; cursor: not-allowed; color: #8b949e; }
+        .code-box {
+            background: #0d1117;
+            border: 2px dashed #58a6ff;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+            font-size: 32px;
+            font-weight: 800;
+            letter-spacing: 6px;
+            color: #58a6ff;
+        }
+        .bundle-box {
+            width: 100%;
+            height: 120px;
+            font-family: monospace;
+            font-size: 12px;
+            resize: none;
+            margin-bottom: 12px;
+        }
+        .info-card {
+            background: #1f242c;
+            border-left: 4px solid #58a6ff;
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 13px;
+            color: #8b949e;
+            margin-top: 16px;
+            border-radius: 4px;
+        }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">🛡️</div>
+        <h1>TITAN PAIRING PORTAL</h1>
+        <p class="subtitle">Link your WhatsApp & copy your SESSION_ID key</p>
+
+        <div id="statusBadge" class="status-badge ${isConnected ? 'status-online' : 'status-offline'}">
+            ${isConnected ? '🟢 BOT ONLINE & CONNECTED' : '🟡 WAITING FOR LINK'}
+        </div>
+
+        <div id="pairForm" class="${isConnected ? 'hidden' : ''}">
+            <div class="input-group">
+                <label for="phone">WhatsApp Phone Number</label>
+                <input type="text" id="phone" placeholder="e.g. 2348012345678 (country code, no +)">
+            </div>
+            <button id="btnPair" onclick="requestPairing()">⚡ Get Pairing Code</button>
+            <div id="pairErr" style="color: #f85149; font-size: 13px; margin-top: 10px;"></div>
+        </div>
+
+        <div id="codeArea" class="hidden">
+            <p style="font-size: 14px; color: #8b949e;">Your WhatsApp Pairing Code:</p>
+            <div id="codeDisplay" class="code-box">------</div>
+            <div class="info-card">
+                <strong>How to link:</strong><br>
+                1. Open WhatsApp on your phone.<br>
+                2. Settings ➔ Linked Devices ➔ Link a Device.<br>
+                3. Tap <em>"Link with phone number instead"</em> and enter this code.
+            </div>
+        </div>
+
+        <div id="sessionArea" class="${isConnected ? '' : 'hidden'}">
+            <p style="font-size: 14px; font-weight: 600; color: #3fb950; margin-bottom: 8px;">🎉 WhatsApp Connected Successfully!</p>
+            <textarea id="sessionInput" class="bundle-box" readonly>${sessionBundle}</textarea>
+            <button onclick="copySession()">📋 Copy SESSION_ID Key</button>
+            <div class="info-card">
+                <strong>Next Step:</strong> Paste this key as <code>SESSION_ID</code> in your host's Environment Variables so TITAN stays online permanently across server restarts!
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function requestPairing() {
+            const phone = document.getElementById('phone').value.trim();
+            const btn = document.getElementById('btnPair');
+            const err = document.getElementById('pairErr');
+            err.innerText = '';
+
+            if (!phone) {
+                err.innerText = 'Please enter your phone number with country code.';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerText = 'Requesting Code...';
+
+            try {
+                const res = await fetch('/api/pair', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone })
+                });
+                const data = await res.json();
+                if (data.ok && data.code) {
+                    document.getElementById('codeDisplay').innerText = data.code;
+                    document.getElementById('codeArea').classList.remove('hidden');
+                    btn.innerText = 'Code Generated!';
+                    startPolling();
+                } else {
+                    err.innerText = data.error || 'Failed to generate code.';
+                    btn.disabled = false;
+                    btn.innerText = '⚡ Get Pairing Code';
+                }
+            } catch (e) {
+                err.innerText = 'Network error. Try again.';
+                btn.disabled = false;
+                btn.innerText = '⚡ Get Pairing Code';
+            }
+        }
+
+        function copySession() {
+            const text = document.getElementById('sessionInput');
+            text.select();
+            document.execCommand('copy');
+            alert('SESSION_ID key copied to clipboard! Paste it into your host Environment Variables.');
+        }
+
+        let pollTimer = null;
+        function startPolling() {
+            if (pollTimer) return;
+            pollTimer = setInterval(async () => {
+                try {
+                    const res = await fetch('/api/status');
+                    const data = await res.json();
+                    if (data.connected) {
+                        clearInterval(pollTimer);
+                        document.getElementById('statusBadge').className = 'status-badge status-online';
+                        document.getElementById('statusBadge').innerText = '🟢 BOT ONLINE & CONNECTED';
+                        document.getElementById('pairForm').classList.add('hidden');
+                        document.getElementById('codeArea').classList.add('hidden');
+                        if (data.sessionBundle) {
+                            document.getElementById('sessionInput').value = data.sessionBundle;
+                        }
+                        document.getElementById('sessionArea').classList.remove('hidden');
+                    }
+                } catch(e) {}
+            }, 3000);
+        }
+
+        if (!${isConnected}) startPolling();
+    </script>
+</body>
+</html>`;
+    res.send(html);
+});
 
 const server = app.listen(config.port, '0.0.0.0', () => console.log(`[TITAN] Server on ${config.port}`));
 server.on('error', (err) => {
