@@ -1,6 +1,7 @@
 const { DisconnectReason } = require('@whiskeysockets/baileys');
 const fs = require('fs-extra');
 const path = require('path');
+const zlib = require('zlib');
 
 // Configuration
 const config = {
@@ -199,24 +200,35 @@ function cleanupStore() {
 setInterval(cleanupStore, 10 * 60 * 1000); // Every 10 mins
 
 // Helpers
-const getOwnerJid = () => `${config.ownerNumber}@s.whatsapp.net`;
+const getOwnerJid = () => {
+    if (settings.ownerJid) return settings.ownerJid;
+    if (config.ownerNumber) return `${config.ownerNumber}@s.whatsapp.net`;
+    return null;
+};
 
-const isOwner = (jid) => {
+const isOwner = (jid, fromMe = false) => {
+    if (fromMe) return true; // Commands sent from the bot account itself are ALWAYS owner!
     if (!jid) return false;
     const num = jid.split('@')[0].split(':')[0];
+    
+    // 1. Check process.env OWNER_NUMBER first
+    if (config.ownerNumber && num === config.ownerNumber) return true;
+    
+    // 2. Check dynamic ownerJid setting
     if (settings.ownerJid) {
-        const ownerNum = settings.ownerJid.split('@')[0];
-        return jid.split('@')[0] === ownerNum || num === ownerNum.split(':')[0];
+        const ownerNum = settings.ownerJid.split('@')[0].split(':')[0];
+        if (num === ownerNum) return true;
     }
-    if (num === config.ownerNumber) return true;
-    // Handle LID-based JIDs - try to resolve via lid-mapping files
+    
+    // 3. Handle LID-based JIDs - try to resolve via lid-mapping files
     try {
         if (jid.endsWith('@lid') || jid.endsWith('@hosted.lid') || jid.endsWith('@hosted')) {
             const lidUser = num;
             const reversePath = path.join(config.authPath, `lid-mapping-${lidUser}_reverse.json`);
             if (fs.existsSync(reversePath)) {
                 const pnUser = fs.readJsonSync(reversePath);
-                if (pnUser === config.ownerNumber) return true;
+                if (config.ownerNumber && pnUser === config.ownerNumber) return true;
+                if (settings.ownerJid && pnUser === settings.ownerJid.split('@')[0]) return true;
             }
         }
     } catch (e) {}
@@ -244,10 +256,19 @@ const getMessageText = (msg) => {
         '';
 };
 
-// Metadata Cache (JID -> { data, timestamp })
+// Metadata Cache (JID -> { data, timestamp }) with size cap to prevent memory leaks
 const metadataCache = new Map();
 
 const getCachedGroupMetadata = async (sock, jid) => {
+    // Auto-prune old metadata cache if size exceeds 200
+    if (metadataCache.size > 200) {
+        const now = Date.now();
+        for (const [k, v] of metadataCache.entries()) {
+            if (now - v.timestamp > 5 * 60 * 1000) {
+                metadataCache.delete(k);
+            }
+        }
+    }
     const cached = metadataCache.get(jid);
     if (cached && (Date.now() - cached.timestamp < 5 * 60 * 1000)) { // 5 min cache
         return cached.data;
@@ -448,6 +469,76 @@ const isViewOnceMessage = (msg) => {
     return false;
 };
 
+/**
+ * Export the entire auth directory (creds + prekeys + app state) as a Base64 string
+ * Uses zlib deflate compression to keep string short (~2KB instead of 15KB)
+ */
+function exportSessionBundle(authPath) {
+    try {
+        if (!fs.existsSync(authPath)) return null;
+        const files = fs.readdirSync(authPath);
+        const bundle = {};
+        for (const file of files) {
+            if (file.endsWith('.json')) {
+                bundle[file] = fs.readFileSync(path.join(authPath, file), 'utf-8');
+            }
+        }
+        if (!bundle['creds.json']) return null;
+        const jsonStr = JSON.stringify(bundle);
+        const compressed = zlib.deflateSync(jsonStr);
+        return 'TITAN_Z~' + compressed.toString('base64');
+    } catch (e) {
+        console.error('[TITAN] Session export error:', e.message);
+        return null;
+    }
+}
+
+/**
+ * Restore session from Base64 string (handles compressed bundle, multi-file bundle & legacy creds.json)
+ */
+function restoreSessionFromId(sessionId, authPath) {
+    if (!sessionId) return false;
+    try {
+        let sid = sessionId.trim();
+        let decodedRaw;
+
+        if (sid.startsWith('TITAN_Z~')) {
+            const b64 = sid.replace('TITAN_Z~', '');
+            const buffer = Buffer.from(b64, 'base64');
+            decodedRaw = zlib.inflateSync(buffer).toString('utf-8');
+        } else {
+            if (sid.includes(':')) sid = sid.split(':')[1];
+            if (sid.includes('~')) sid = sid.split('~')[1];
+            decodedRaw = sid.startsWith('{') ? sid : Buffer.from(sid, 'base64').toString('utf-8');
+        }
+
+        const parsed = JSON.parse(decodedRaw);
+
+        // Check if multi-file bundle
+        if (parsed['creds.json']) {
+            console.log('[TITAN] Restoring multi-file session bundle...');
+            fs.ensureDirSync(authPath);
+            for (const [filename, content] of Object.entries(parsed)) {
+                if (filename.endsWith('.json')) {
+                    const strContent = typeof content === 'string' ? content : JSON.stringify(content);
+                    fs.writeFileSync(path.join(authPath, filename), strContent);
+                }
+            }
+            console.log('[TITAN] Multi-file session bundle restored successfully!');
+            return true;
+        } else if (parsed.me || parsed.noiseKey) {
+            // Legacy creds.json format
+            console.log('[TITAN] Restoring single creds.json session...');
+            fs.ensureDirSync(authPath);
+            fs.writeFileSync(path.join(authPath, 'creds.json'), typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2));
+            return true;
+        }
+    } catch (e) {
+        console.error('[TITAN] Session decode error:', e.message);
+    }
+    return false;
+}
+
 module.exports = {
     config,
     settings,
@@ -479,5 +570,8 @@ module.exports = {
     extractViewOnceContent,
     detectViewOnceType,
     getViewOnceInfo,
-    isViewOnceMessage
+    isViewOnceMessage,
+    // Session Bundle Helpers
+    exportSessionBundle,
+    restoreSessionFromId
 };

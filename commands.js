@@ -2,7 +2,7 @@ const { downloadContentFromMessage, downloadMediaMessage } = require('@whiskeyso
 const axios = require('axios');
 const fs = require('fs-extra');
 const moment = require('moment');
-const { config, settings, saveSettings, getOwnerJid, isGroup, isChannel, getGroupAdmins, spamTracker, gameStore, getCachedGroupMetadata, isViewOnceStub, extractViewOnceContent, detectViewOnceType, isBotAdmin, getGroupSettings, updateGroupSettings, addStrike, getStrikes, clearStrikes } = require('./utils');
+const { config, settings, saveSettings, getOwnerJid, isGroup, isChannel, getGroupAdmins, spamTracker, gameStore, getCachedGroupMetadata, isViewOnceStub, extractViewOnceContent, detectViewOnceType, isBotAdmin, getGroupSettings, updateGroupSettings, addStrike, getStrikes, clearStrikes, exportSessionBundle } = require('./utils');
 
 // Plugins
 const { handleEconomy, getUser, saveDb } = require('./src/plugins/economy');
@@ -17,8 +17,8 @@ const { handleChess, isChessMove, makeChessMove } = require('./src/plugins/chess
 const ADMIN_COMMANDS = [
     'mode', 'kick', 'remove', 'promote', 'demote', 'mute', 'close', 'unmute', 'open',
     'antilink', 'welcome', 'goodbye', 'antivviewonce', 'antivv', 'antidelete', 'antidel',
-    'link', 'invite', 'revoke', 'reset', 'delete', 'del', 'broadcast', 'bc',
-    'antispam', 'setgroup', 'setchannel', 'update', 'seturl', 'owner', 'restart', 'reset-session', 'resetsession'
+    'link', 'invite', 'revoke', 'reset', 'delete', 'del', 'broadcast', 'bc', 'block', 'unblock',
+    'antispam', 'setgroup', 'setchannel', 'update', 'seturl', 'owner', 'restart', 'reset-session', 'resetsession', 'session', 'getsession'
 ];
 
 // ============================================================
@@ -870,9 +870,22 @@ _“Building the future, one line of code at a time.”_
             break;
 
 
-        case 'owner':
-            const currentOwner = settings.ownerJid || config.ownerNumber || 'Not set';
-            await sendWithLogo(`👤 *TITAN OWNER*\n\nJID: ${currentOwner}`);
+        case 'block':
+        case 'unblock':
+            await handleAdmin(sock, msg, jid, sender, cmd, args, text, owner, sendWithLogo);
+            break;
+
+        case 'session':
+        case 'getsession':
+            if (!owner) return sendWithLogo('❌ Owner only command!');
+            try {
+                const bundle = exportSessionBundle(config.authPath);
+                if (!bundle) return sendWithLogo('❌ Failed to package session bundle.');
+                await sock.sendMessage(sender, { text: `🔑 *TITAN SESSION BUNDLE*\n\nPaste this full key into your SESSION_ID env variable on your host (Render/Railway/Koyeb/etc.) to keep your session alive permanently:\n\n${bundle}` });
+                if (jid !== sender) await sendWithLogo('✅ Session bundle sent to your DM!');
+            } catch (e) {
+                await sendWithLogo(`❌ Session export error: ${e.message}`);
+            }
             break;
 
 

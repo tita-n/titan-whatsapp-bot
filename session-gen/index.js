@@ -176,10 +176,19 @@ app.get('/api/check/:sessionId', async (req, res) => {
         try {
             const credsFile = path.join(sessionDir, 'creds.json');
             if (fs.existsSync(credsFile)) {
-                const creds = fs.readFileSync(credsFile, 'utf-8');
-                const sessionString = Buffer.from(creds).toString('base64');
+                // Bundle all files in sessionDir so pre-keys and signal keys are preserved!
+                const files = fs.readdirSync(sessionDir);
+                const bundle = {};
+                for (const file of files) {
+                    if (file.endsWith('.json')) {
+                        bundle[file] = fs.readFileSync(path.join(sessionDir, file), 'utf-8');
+                    }
+                }
+                const bundleString = JSON.stringify(bundle);
+                const sessionString = Buffer.from(bundleString).toString('base64');
 
                 // Final cleanup
+                await delay(1000);
                 try { sock.ev.removeAllListeners(); sock.logout(); } catch (e) { }
                 fs.removeSync(sessionDir);
                 pairingStates.delete(sessionId);
