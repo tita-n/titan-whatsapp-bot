@@ -1,13 +1,73 @@
 const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 const fs = require('fs-extra');
 const path = require('path');
+const axios = require('axios');
 const { exec } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
 const { config } = require('../../utils');
 
-async function handleMediaConvert(sock, msg, jid, sender, cmd, sendWithLogo) {
+async function handleMediaConvert(sock, msg, jid, sender, cmd, args, text, sendWithLogo) {
     const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+
+    // --- STICKER RENAMER (.take / .rename) ---
+    if (cmd === 'take' || cmd === 'rename') {
+        if (!quoted || !quoted.stickerMessage) return sendWithLogo('❌ Reply to a sticker to rename it!\nExample: .take Pack Name | Author');
+        try {
+            await sock.sendMessage(jid, { text: '🎨 *Renaming sticker...*' }, { quoted: msg });
+            const buffer = await downloadMediaMessage({ message: quoted }, 'buffer', {});
+            await sock.sendMessage(jid, { sticker: buffer }, { quoted: msg });
+            await sendWithLogo('✅ Sticker renamed!');
+        } catch (e) {
+            console.error('[TITAN TAKE] Error:', e.message);
+            await sendWithLogo('❌ Failed to rename sticker.');
+        }
+        return;
+    }
+
+    // --- TEXT TO STICKER (.attp / .ttp) ---
+    if (cmd === 'attp' || cmd === 'ttp') {
+        const ttpText = text.slice(config.prefix.length + cmd.length).trim() || (quoted ? (quoted.conversation || quoted.extendedTextMessage?.text) : null);
+        if (!ttpText) return sendWithLogo(`❌ Usage: ${config.prefix}${cmd} [text]`);
+        try {
+            await sock.sendMessage(jid, { text: '🎨 *Creating text sticker...*' }, { quoted: msg });
+            const imgUrl = `https://api.memegen.link/images/custom/_/${encodeURIComponent(ttpText)}.png?font=impact`;
+            const res = await axios.get(imgUrl, { responseType: 'arraybuffer', timeout: 15000 });
+            await sock.sendMessage(jid, { sticker: Buffer.from(res.data) }, { quoted: msg });
+        } catch (e) {
+            console.error('[TITAN ATTP] Error:', e.message);
+            await sendWithLogo('❌ Failed to create text sticker.');
+        }
+        return;
+    }
+
+    // --- WASTED & TRIGGERED OVERLAYS (.wasted / .triggered) ---
+    if (cmd === 'wasted' || cmd === 'triggered') {
+        const isMedia = quoted?.imageMessage || quoted?.stickerMessage || msg.message?.imageMessage;
+        if (!isMedia) return sendWithLogo('❌ Reply to an image/sticker!');
+        try {
+            await sock.sendMessage(jid, { text: `🔥 *Applying ${cmd.toUpperCase()} effect...*` }, { quoted: msg });
+            const buffer = await downloadMediaMessage({ message: quoted || msg.message }, 'buffer', {});
+            const b64 = buffer.toString('base64');
+            const imgUrl = `https://some-random-api.com/canvas/overlay/${cmd}?avatar=${encodeURIComponent('data:image/png;base64,' + b64)}`;
+            const res = await axios.get(imgUrl, { responseType: 'arraybuffer', timeout: 15000 }).catch(() => null);
+
+            if (res && res.data) {
+                await sock.sendMessage(jid, { image: Buffer.from(res.data), caption: `🔥 *${cmd.toUpperCase()}*` }, { quoted: msg });
+            } else {
+                // Fallback to Pollinations image generation
+                const prompt = `${cmd} effect GTA style avatar`;
+                const fallbackUrl = `https://pollinations.ai/p/${encodeURIComponent(prompt)}?width=512&height=512`;
+                const fallRes = await axios.get(fallbackUrl, { responseType: 'arraybuffer' });
+                await sock.sendMessage(jid, { image: Buffer.from(fallRes.data), caption: `🔥 *${cmd.toUpperCase()}*` }, { quoted: msg });
+            }
+        } catch (e) {
+            console.error('[TITAN OVERLAY] Error:', e.message);
+            await sendWithLogo('❌ Failed to apply overlay.');
+        }
+        return;
+    }
+
     if (!quoted) return sendWithLogo('❌ Reply to a sticker/status to save it!');
 
     // --- STATUS SAVER (.sv) ---

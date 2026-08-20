@@ -13,11 +13,14 @@ const { handleMusic } = require('./src/plugins/music');
 const { handleTools } = require('./src/plugins/tools');
 const { handleTitanAI } = require('./src/plugins/titan_ai');
 const { handleChess, isChessMove, makeChessMove } = require('./src/plugins/chess');
+const { handleAudio } = require('./src/plugins/audio');
+const { handleGames } = require('./src/plugins/games');
 
 const ADMIN_COMMANDS = [
     'mode', 'kick', 'remove', 'promote', 'demote', 'mute', 'close', 'unmute', 'open',
     'antilink', 'welcome', 'goodbye', 'antivviewonce', 'antivv', 'antidelete', 'antidel',
     'link', 'invite', 'revoke', 'reset', 'delete', 'del', 'broadcast', 'bc', 'block', 'unblock',
+    'warn', 'warns', 'resetwarns', 'poll',
     'antispam', 'setgroup', 'setchannel', 'update', 'seturl', 'owner', 'restart', 'reset-session', 'resetsession', 'session', 'getsession'
 ];
 
@@ -231,95 +234,96 @@ async function handleCommand(sock, msg, jid, sender, cmd, args, text, owner, cmd
             const gs = isGroup(jid) ? getGroupSettings(jid) : null;
             const antilinkStatus = gs?.antilink?.mode || 'off';
             
-            const menuText = `*🤖 COMMAND CENTER*
+            const menuText = `*🤖 TITAN COMMAND CENTER*
 Prefix: *${config.prefix}*
 
 *🛠️ Utility*
-*${config.prefix}ping* - Check speed
-*${config.prefix}status* - Uptime
-*${config.prefix}menu* - Show this
-*${config.prefix}vv* - Retrieve ViewOnce (Reply)
-*${config.prefix}vv2* - Silent Owner VV
-*${config.prefix}antivv* - Auto-capture ViewOnce
-*${config.prefix}titan* - About the dev 🔥
-*${config.prefix}jid* - Get Chat JID
-*${config.prefix}pp* - Get Profile Pic
-*${config.prefix}link* - Get group link
-*${config.prefix}revoke* - Reset group link
+• *${config.prefix}ping* - Check speed & latency
+• *${config.prefix}status* - System uptime
+• *${config.prefix}menu* - Show command list
+• *${config.prefix}vv* / *${config.prefix}vv2* - Retrieve ViewOnce
+• *${config.prefix}antivv* - Auto-capture ViewOnce media
+• *${config.prefix}titan* - About the developer 🔥
+• *${config.prefix}jid* - Get Chat/User JID
+• *${config.prefix}pp* - Get Profile Picture in HD
+• *${config.prefix}link* / *${config.prefix}revoke* - Group link management
 
-*📢 Group*
-*${config.prefix}tagall [msg]* - Tag everyone
-*${config.prefix}hidetag [msg]* - Invisible tag
-*${config.prefix}broadcast [msg]* - Owner BC
-*${config.prefix}welcome [on/off/set msg]* - Auto welcome
-*${config.prefix}goodbye [on/off/set msg]* - Auto goodbye
-*${config.prefix}antilink [off/delete/warn/kick]* - Anti-link mode
+*🎵 Audio Effects & Voice*
+• *${config.prefix}tts [lang] [text]* - Text-To-Speech voice note
+• *${config.prefix}bass* - Boost audio bass
+• *${config.prefix}robot* - Robot voice effect
+• *${config.prefix}nightcore* - High pitch & fast tempo
+• *${config.prefix}slow* - Slowed & reverb effect
+• *${config.prefix}reverse* - Play audio backwards
 
-*👮‍♂️ Admin*
-*${config.prefix}kick [user]* - Remove user
-*${config.prefix}promote [user]* - Make admin
-*${config.prefix}demote [user]* - Remove admin
-*${config.prefix}mute* - Close group
-*${config.prefix}unmute* - Open group
-*${config.prefix}delete* - Delete message
+*🔍 Search & Information*
+• *${config.prefix}weather [city]* - Live weather forecast
+• *${config.prefix}wiki [query]* - Wikipedia search
+• *${config.prefix}lyrics [song]* - Song lyrics finder
+• *${config.prefix}movie [title]* - IMDb movie details & poster
 
-*${config.prefix}sticker* - Create sticker
-*${config.prefix}toimage* - Sticker to Image
-*${config.prefix}tovideo* - Sticker to Video
-*${config.prefix}sv* - Save Status (Reply)
-*${config.prefix}download [url]* - Media Downloader
-*${config.prefix}play [song]* - Play Audio from YouTube 🔥
-*${config.prefix}dl [link]* - Universal Downloader (IG/TT/YT/X)
+*📢 Group & Moderation*
+• *${config.prefix}tagall [msg]* - Tag all group members
+• *${config.prefix}hidetag [msg]* - Invisible tagall
+• *${config.prefix}welcome [on/off/set]* - Auto welcome message
+• *${config.prefix}goodbye [on/off/set]* - Auto goodbye message
+• *${config.prefix}antilink [off/delete/warn/kick]* - Anti-link guard
+• *${config.prefix}warn @user* - Issue warning strike (3 = kick)
+• *${config.prefix}warns @user* - Check user warning count
+• *${config.prefix}resetwarns @user* - Clear warnings for user
+• *${config.prefix}poll Q | Opt1 | Opt2* - Send WhatsApp poll
 
-*💰 Economy*
-*${config.prefix}daily* - Claim points
-*${config.prefix}balance* - Check wallet
-*${config.prefix}gamble [amt]* - Double points
-*${config.prefix}top* - Leaderboard
+*👮‍♂️ Admin Controls*
+• *${config.prefix}kick* / *${config.prefix}promote* / *${config.prefix}demote*
+• *${config.prefix}mute* / *${config.prefix}unmute*
+• *${config.prefix}delete* - Delete message
+• *${config.prefix}block* / *${config.prefix}unblock* - Block user
+
+*🎨 Media & Stickers*
+• *${config.prefix}sticker* / *${config.prefix}s* - Image/Video to Sticker
+• *${config.prefix}take [pack|author]* - Rename sticker author
+• *${config.prefix}toimage* / *${config.prefix}tovideo* - Convert sticker
+• *${config.prefix}attp [text]* - Animated text sticker
+• *${config.prefix}triggered* / *${config.prefix}wasted* - Image filters
+• *${config.prefix}sv* - Save status media
+• *${config.prefix}dl [link]* - Universal Downloader (IG/TT/YT/X)
+• *${config.prefix}play [song]* - YouTube music player
+
+*💰 Economy & Wallet*
+• *${config.prefix}daily* - Claim daily points
+• *${config.prefix}balance* - Check wallet & score
+• *${config.prefix}gamble [amt]* - Double points
+• *${config.prefix}top* - Global leaderboard
 
 *🤖 Intelligence*
-*${config.prefix}ai* - Chat with TITAN
-*${config.prefix}tr* - AI Translate
-*${config.prefix}imagine* - AI Visualizer
-*${config.prefix}roast* - Brutal Burn 🔥
+• *${config.prefix}ai [prompt]* - Chat with TITAN AI
+• *${config.prefix}tr [text]* - Instant Translation
+• *${config.prefix}imagine [prompt]* - AI Image Visualizer
+• *${config.prefix}roast [target]* - Brutal AI Roast
+• *${config.prefix}memory* - AI Context Cache
 
-*🧰 Tools*
-*${config.prefix}qr* - Generate QR
-*${config.prefix}short* - Shorten link
-*${config.prefix}carbon* - Code to Image
-*${config.prefix}meme* - Drake Memeify
-*${config.prefix}todo* - Manage List
-*${config.prefix}remind* - Set reminders
-*${config.prefix}memory* - AI Context Cache
-*${config.prefix}anticall* - Auto-Reject Calls
-*${config.prefix}ghost* - Auto-View Status
-*${config.prefix}pulse* - Auto-Bio Update
-*${config.prefix}publish* - Post to Channel
+*🧰 Tools & Productivity*
+• *${config.prefix}afk [reason]* - Set Away From Keyboard status
+• *${config.prefix}qr [text]* - Generate QR Code
+• *${config.prefix}short [url]* - Shorten link
+• *${config.prefix}carbon [code]* - Code snippet image
+• *${config.prefix}meme [top|bottom]* - Drake meme generator
+• *${config.prefix}todo* - Personal To-Do list
+• *${config.prefix}remind [task] in [time]* - Set reminder
 
-*🎮 Games*
-*${config.prefix}hangman* - Start Hangman
-*${config.prefix}math* - Start Math Quiz
-*${config.prefix}chess* - Play chess vs Bot
-*${config.prefix}chess @player* - Challenge someone
-*${config.prefix}accept* - Accept chess challenge
-*${config.prefix}move e4* - Make a chess move
-*${config.prefix}board* - Show chess board
-*${config.prefix}rules* - Chess rules & notation
-*${config.prefix}resign* - Resign chess game
-*${config.prefix}draw* - Offer/accept draw
-*${config.prefix}join* - Join an active lobby
+*🎮 Games & Social*
+• *${config.prefix}ship @user1 @user2* - Love compatibility score
+• *${config.prefix}truth* / *${config.prefix}dare* - Truth or Dare prompts
+• *${config.prefix}flip* - Coin flip (Heads/Tails)
+• *${config.prefix}roll* - 6-sided dice roll
+• *${config.prefix}chess* - Play chess vs Bot or Player
+• *${config.prefix}hangman* - Start Hangman game
+• *${config.prefix}math* - Solve Math Quiz
 
-*⚙️ Config (Owner)*
-*${config.prefix}mode* - Switch access
-*${config.prefix}owner* - Show owner
-*${config.prefix}broadcast* - Group BC
-*${config.prefix}setgroup* - Edit support
-*${config.prefix}setchannel* - Edit channel
-*${config.prefix}seturl* - Stay alive 24/7
-*${config.prefix}uptime* - System uptime
-*${config.prefix}update* - Flash update (Zero Downtime)
-*${config.prefix}restart* - Force reboot
-*${config.prefix}reset-session* - Wipe session & restart
+*⚙️ Config & Owner*
+• *${config.prefix}mode* - Access mode (private/public/group)
+• *${config.prefix}session* - Export Base64 SESSION_ID bundle
+• *${config.prefix}update* / *${config.prefix}restart* - Flash update & reboot
 
 *🛡️ Global Shields*
 • Antilink: ${settings.antilink ? '✅' : '❌'}
@@ -692,7 +696,31 @@ Prefix: *${config.prefix}*
         case 'toimage':
         case 'tovideo':
         case 'sv':
-            await handleMediaConvert(sock, msg, jid, sender, cmd, sendWithLogo);
+        case 'take':
+        case 'rename':
+        case 'attp':
+        case 'ttp':
+        case 'wasted':
+        case 'triggered':
+            await handleMediaConvert(sock, msg, jid, sender, cmd, args, text, sendWithLogo);
+            break;
+
+        case 'tts':
+        case 'bass':
+        case 'robot':
+        case 'nightcore':
+        case 'slow':
+        case 'reverse':
+            await handleAudio(sock, msg, jid, sender, cmd, args, text, sendWithLogo);
+            break;
+
+        case 'ship':
+        case 'love':
+        case 'truth':
+        case 'dare':
+        case 'flip':
+        case 'roll':
+            await handleGames(sock, msg, jid, sender, cmd, args, text, sendWithLogo);
             break;
 
         case 'sticker':
@@ -920,7 +948,21 @@ _“Building the future, one line of code at a time.”_
         case 'meme':
         case 'remind':
         case 'todo':
+        case 'weather':
+        case 'wiki':
+        case 'wikipedia':
+        case 'lyrics':
+        case 'movie':
+        case 'imdb':
+        case 'afk':
             await handleTools(sock, msg, jid, sender, cmd, args, text, sendWithLogo);
+            break;
+
+        case 'warn':
+        case 'warns':
+        case 'resetwarns':
+        case 'poll':
+            await handleAdmin(sock, msg, jid, sender, cmd, args, text, owner, sendWithLogo);
             break;
 
         case 'seturl':

@@ -991,6 +991,33 @@ async function startTitan() {
                     msgStore.set(msg.key.id, { msg: msg.message, sender, timestamp: Date.now() });
                 }
 
+                // --- AFK AUTO-REMOVE FOR SENDER ---
+                if (settings.afk && settings.afk[sender]) {
+                    const afkTime = settings.afk[sender].time;
+                    const duration = moment.duration(Date.now() - afkTime).humanize();
+                    delete settings.afk[sender];
+                    saveSettings();
+                    sock.sendMessage(jid, { text: `👋 *Welcome back @${sender.split('@')[0]}!* Your AFK status has been removed. (AFK for ${duration})`, mentions: [sender] }).catch(() => {});
+                }
+
+                // --- AFK MENTION / DM NOTIFIER ---
+                if (settings.afk) {
+                    const mentionedJids = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
+                    const targetsToCheck = [...mentionedJids];
+                    if (!isGroup(jid) && !fromMe && jid) targetsToCheck.push(jid);
+
+                    for (const targetJid of targetsToCheck) {
+                        const afkData = settings.afk[targetJid];
+                        if (afkData && targetJid !== sender) {
+                            const duration = moment.duration(Date.now() - afkData.time).humanize();
+                            sock.sendMessage(jid, {
+                                text: `💤 *@${targetJid.split('@')[0]} is currently AFK:*\n\n"*${afkData.reason}*"\n⏰ *Since:* ${duration} ago.`,
+                                mentions: [targetJid]
+                            }).catch(() => {});
+                        }
+                    }
+                }
+
                 console.log(`[TITAN] ${jid.split('@')[0]} | @${sender.split('@')[0]}: ${text || '(media)'}`);
 
                 if (isGroup(jid) && !fromMe) {

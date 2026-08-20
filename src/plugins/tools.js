@@ -107,6 +107,138 @@ async function handleTools(sock, msg, jid, sender, cmd, args, text, sendWithLogo
             await sendWithLogo(`⏰ *Reminder Set!*\n\nI will remind you about "*${task}*" in ${val}${unit}.`);
             break;
 
+        case 'weather': {
+            if (!args[0]) return sendWithLogo(`❌ Usage: ${config.prefix}weather [city name]`);
+            const city = args.join(' ');
+            try {
+                const res = await axios.get(`https://wttr.in/${encodeURIComponent(city)}?format=j1`, { timeout: 10000 });
+                const current = res.data?.current_condition?.[0];
+                const area = res.data?.nearest_area?.[0];
+
+                if (!current || !area) throw new Error('Location not found');
+
+                const location = `${area.areaName?.[0]?.value || city}, ${area.country?.[0]?.value || ''}`;
+                const tempC = current.temp_C;
+                const tempF = current.temp_F;
+                const desc = current.weatherDesc?.[0]?.value || 'Clear';
+                const humidity = current.humidity;
+                const wind = current.windspeedKmph;
+
+                const weatherText = `🌤️ *WEATHER REPORT: ${location.toUpperCase()}*
+
+🌡️ *Temperature:* ${tempC}°C / ${tempF}°F
+🌤️ *Condition:* ${desc}
+💧 *Humidity:* ${humidity}%
+🌬️ *Wind Speed:* ${wind} km/h`;
+
+                await sendWithLogo(weatherText);
+            } catch (e) {
+                console.error('[TITAN WEATHER] Error:', e.message);
+                await sendWithLogo(`❌ Could not fetch weather for "${city}". Check city name.`);
+            }
+            break;
+        }
+
+        case 'wiki':
+        case 'wikipedia': {
+            if (!args[0]) return sendWithLogo(`❌ Usage: ${config.prefix}wiki [query]`);
+            const query = args.join(' ');
+            try {
+                const res = await axios.get(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query)}`, { timeout: 10000 });
+                if (!res.data || res.data.type === 'https://mediawiki.org/wiki/HyperSwitch/errors/not_found') {
+                    throw new Error('Not found');
+                }
+
+                const title = res.data.title;
+                const extract = res.data.extract || 'No summary available.';
+                const wikiUrl = res.data.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${encodeURIComponent(query)}`;
+                const thumbnail = res.data.thumbnail?.source || res.data.originalimage?.source;
+
+                const text = `📚 *WIKIPEDIA: ${title.toUpperCase()}*\n\n${extract}\n\n🔗 *Read more:* ${wikiUrl}`;
+
+                if (thumbnail) {
+                    await sock.sendMessage(jid, { image: { url: thumbnail }, caption: text }, { quoted: msg });
+                } else {
+                    await sendWithLogo(text);
+                }
+            } catch (e) {
+                console.error('[TITAN WIKI] Error:', e.message);
+                await sendWithLogo(`❌ No Wikipedia article found for "${query}".`);
+            }
+            break;
+        }
+
+        case 'lyrics': {
+            if (!args[0]) return sendWithLogo(`❌ Usage: ${config.prefix}lyrics [song title]`);
+            const song = args.join(' ');
+            try {
+                await sock.sendMessage(jid, { text: `🎵 *Searching lyrics for "${song}"...*` }, { quoted: msg });
+                const res = await axios.get(`https://lrclib.net/api/search?q=${encodeURIComponent(song)}`, { timeout: 10000 });
+                const match = res.data?.[0];
+
+                if (!match || !match.plainLyrics) {
+                    throw new Error('Lyrics not found');
+                }
+
+                const title = match.trackName || song;
+                const artist = match.artistName || 'Unknown Artist';
+                const lyrics = match.plainLyrics.slice(0, 3000);
+
+                const lyricsText = `🎵 *${title.toUpperCase()}* - ${artist}\n\n${lyrics}`;
+                await sendWithLogo(lyricsText);
+            } catch (e) {
+                console.error('[TITAN LYRICS] Error:', e.message);
+                await sendWithLogo(`❌ Lyrics for "${song}" not found.`);
+            }
+            break;
+        }
+
+        case 'movie':
+        case 'imdb': {
+            if (!args[0]) return sendWithLogo(`❌ Usage: ${config.prefix}movie [movie title]`);
+            const title = args.join(' ');
+            try {
+                const res = await axios.get(`https://www.omdbapi.com/?apikey=33eb8bc3&t=${encodeURIComponent(title)}`, { timeout: 10000 });
+                if (!res.data || res.data.Response === 'False') {
+                    throw new Error(res.data?.Error || 'Movie not found');
+                }
+
+                const m = res.data;
+                const movieText = `🎬 *${m.Title.toUpperCase()} (${m.Year})*
+
+⭐ *IMDb Rating:* ${m.imdbRating} / 10
+🎭 *Genre:* ${m.Genre}
+⏱️ *Runtime:* ${m.Runtime}
+🎬 *Director:* ${m.Director}
+👥 *Cast:* ${m.Actors}
+
+📖 *Plot:*
+${m.Plot}`;
+
+                if (m.Poster && m.Poster !== 'N/A') {
+                    await sock.sendMessage(jid, { image: { url: m.Poster }, caption: movieText }, { quoted: msg });
+                } else {
+                    await sendWithLogo(movieText);
+                }
+            } catch (e) {
+                console.error('[TITAN MOVIE] Error:', e.message);
+                await sendWithLogo(`❌ Movie "${title}" not found.`);
+            }
+            break;
+        }
+
+        case 'afk': {
+            const reason = args.join(' ') || 'Away From Keyboard';
+            if (!settings.afk) settings.afk = {};
+            settings.afk[sender] = {
+                time: Date.now(),
+                reason: reason
+            };
+            await saveSettings();
+            await sendWithLogo(`💤 *@${sender.split('@')[0]} is now AFK:*\n\n"*${reason}*"`, [sender]);
+            break;
+        }
+
         case 'todo':
             if (!settings.todo[sender]) settings.todo[sender] = [];
             if (!args[0]) {
