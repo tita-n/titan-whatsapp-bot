@@ -169,11 +169,10 @@ if (normalizedAdmins.includes(normalizedSender)) {
 async function handleCommand(sock, msg, jid, sender, cmd, args, text, owner, cmdStart = Date.now()) {
     const isGroupChat = isGroup(jid);
 
-    const sendWithLogo = async (text, mentions = [], lite = false) => {
+    const sendWithLogo = async (text, mentions = [], lite = true) => {
         const header = `╭━━━━━━━━━━━━━━╮\n      🛡️  *T I T A N*\n╰━━━━━━━━━━━━━━╯`;
-        const duration = (Date.now() - cmdStart) / 1000;
-        const latencyStr = duration < 0.1 ? '0.0000009ms [QUANTUM]' : `${duration.toFixed(4)}s`;
-        const footer = `\n\n⚡ *Latency:* ${latencyStr}\n🛡️ *Elite Edition*`;
+        const elapsedMs = Date.now() - cmdStart;
+        const footer = `\n\n⚡ *Latency:* ${elapsedMs}ms\n🛡️ *Elite Edition*`;
         const caption = `${header}\n\n${text}${footer}`;
 
         // Turbo-Duct Optimization: Skip thumbnail for newsletters or when 'lite' is requested
@@ -198,13 +197,8 @@ async function handleCommand(sock, msg, jid, sender, cmd, args, text, owner, cmd
             }
         } : {};
 
-        // ATOMIC SPEED PATH: If 'lite' or in Channel, send pure text. No image binary upload.
-        if (lite || isChan || !config.logoBuffer) {
-            await sock.sendMessage(jid, { text: caption, mentions, contextInfo });
-        } else {
-            // PREMIUM PATH: Includes image binary upload (Slower)
-            await sock.sendMessage(jid, { image: config.logoBuffer, caption, mentions, contextInfo });
-        }
+        // ATOMIC SPEED PATH: Send pure text with externalAdReply metadata for lightning speed (< 100ms)!
+        await sock.sendMessage(jid, { text: caption, mentions, contextInfo });
     };
 
     // --- ADMIN PROTECTION ---
@@ -342,11 +336,15 @@ Prefix: *${config.prefix}*
             await sendWithLogo(`Bot active.\nUptime: ${moment.duration(Date.now() - startTime).humanize()}`);
             break;
 
-        case 'ping':
-            const start = Date.now();
-            await sock.sendMessage(jid, { text: 'Testing speed...' });
-            await sendWithLogo(`Pong! 🏓\nResponse: *${Date.now() - start}ms*`);
+        case 'ping': {
+            const speedMs = Date.now() - cmdStart;
+            await sendWithLogo(`🏓 *PONG!*
+
+⚡ *Execution Speed:* ${speedMs}ms
+🛡️ *Status:* Critical Max
+🚀 *Engine:* Quantum Duct`);
             break;
+        }
 
         case 'tagall':
             if (!isGroup(jid)) return sendWithLogo('❌ Groups only!');
