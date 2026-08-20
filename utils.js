@@ -1,6 +1,7 @@
 const { DisconnectReason } = require('@whiskeysockets/baileys');
 const fs = require('fs-extra');
 const path = require('path');
+const zlib = require('zlib');
 
 // Configuration
 const config = {
@@ -470,6 +471,7 @@ const isViewOnceMessage = (msg) => {
 
 /**
  * Export the entire auth directory (creds + prekeys + app state) as a Base64 string
+ * Uses zlib deflate compression to keep string short (~2KB instead of 15KB)
  */
 function exportSessionBundle(authPath) {
     try {
@@ -482,7 +484,9 @@ function exportSessionBundle(authPath) {
             }
         }
         if (!bundle['creds.json']) return null;
-        return Buffer.from(JSON.stringify(bundle)).toString('base64');
+        const jsonStr = JSON.stringify(bundle);
+        const compressed = zlib.deflateSync(jsonStr);
+        return 'TITAN_Z~' + compressed.toString('base64');
     } catch (e) {
         console.error('[TITAN] Session export error:', e.message);
         return null;
@@ -490,16 +494,24 @@ function exportSessionBundle(authPath) {
 }
 
 /**
- * Restore session from Base64 string (handles multi-file bundle & legacy creds.json)
+ * Restore session from Base64 string (handles compressed bundle, multi-file bundle & legacy creds.json)
  */
 function restoreSessionFromId(sessionId, authPath) {
     if (!sessionId) return false;
     try {
         let sid = sessionId.trim();
-        if (sid.includes(':')) sid = sid.split(':')[1];
-        if (sid.includes('~')) sid = sid.split('~')[1];
+        let decodedRaw;
 
-        let decodedRaw = sid.startsWith('{') ? sid : Buffer.from(sid, 'base64').toString('utf-8');
+        if (sid.startsWith('TITAN_Z~')) {
+            const b64 = sid.replace('TITAN_Z~', '');
+            const buffer = Buffer.from(b64, 'base64');
+            decodedRaw = zlib.inflateSync(buffer).toString('utf-8');
+        } else {
+            if (sid.includes(':')) sid = sid.split(':')[1];
+            if (sid.includes('~')) sid = sid.split('~')[1];
+            decodedRaw = sid.startsWith('{') ? sid : Buffer.from(sid, 'base64').toString('utf-8');
+        }
+
         const parsed = JSON.parse(decodedRaw);
 
         // Check if multi-file bundle

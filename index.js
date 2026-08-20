@@ -109,6 +109,38 @@ app.post('/api/pair', async (req, res) => {
     }
 });
 
+app.post('/api/restore-session', async (req, res) => {
+    const { session } = req.body;
+    if (!session || !session.trim()) {
+        return res.status(400).json({ ok: false, error: 'SESSION_ID key is required' });
+    }
+
+    try {
+        console.log('[TITAN WEB RESTORE] Restoring session via Web Portal...');
+        fs.removeSync(config.authPath);
+        fs.ensureDirSync(config.authPath);
+        
+        const success = restoreSessionFromId(session.trim(), config.authPath);
+        if (!success) {
+            return res.status(400).json({ ok: false, error: 'Invalid or corrupt SESSION_ID format' });
+        }
+
+        res.json({ ok: true, message: 'Session restored successfully! Initializing bot connection...' });
+
+        // Restart bot connection in background
+        setTimeout(async () => {
+            if (currentSock) {
+                try { await currentSock.end(undefined); } catch (e) {}
+            }
+            startTitan();
+        }, 1000);
+
+    } catch (e) {
+        console.error('[TITAN WEB RESTORE] Error:', e.message);
+        res.status(500).json({ ok: false, error: e.message || 'Failed to restore session' });
+    }
+});
+
 // Embedded Web Pairing Portal
 app.get(['/', '/pair'], (req, res) => {
     const isConnected = !!(currentSock && currentSock.user);
@@ -228,11 +260,20 @@ app.get(['/', '/pair'], (req, res) => {
 
         <div id="pairForm" class="${isConnected ? 'hidden' : ''}">
             <div class="input-group">
-                <label for="phone">WhatsApp Phone Number</label>
+                <label for="phone">Option 1: Request Pairing Code</label>
                 <input type="text" id="phone" placeholder="e.g. 2348012345678 (country code, no +)">
             </div>
             <button id="btnPair" onclick="requestPairing()">⚡ Get Pairing Code</button>
             <div id="pairErr" style="color: #f85149; font-size: 13px; margin-top: 10px;"></div>
+
+            <hr style="border: 0; border-top: 1px solid #30363d; margin: 28px 0;">
+
+            <div class="input-group">
+                <label for="sessionKey">Option 2: Already Have a SESSION_ID Key?</label>
+                <textarea id="sessionKey" class="bundle-box" style="height: 80px;" placeholder="Paste your SESSION_ID key here..."></textarea>
+            </div>
+            <button id="btnRestore" style="background: #1f6beb;" onclick="restoreSession()">🚀 Restore & Activate Bot</button>
+            <div id="restoreErr" style="color: #f85149; font-size: 13px; margin-top: 10px;"></div>
         </div>
 
         <div id="codeArea" class="hidden">
@@ -292,6 +333,42 @@ app.get(['/', '/pair'], (req, res) => {
                 err.innerText = 'Network error. Try again.';
                 btn.disabled = false;
                 btn.innerText = '⚡ Get Pairing Code';
+            }
+        }
+
+        async function restoreSession() {
+            const session = document.getElementById('sessionKey').value.trim();
+            const btn = document.getElementById('btnRestore');
+            const err = document.getElementById('restoreErr');
+            err.innerText = '';
+
+            if (!session) {
+                err.innerText = 'Please paste your SESSION_ID key.';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerText = 'Restoring Session...';
+
+            try {
+                const res = await fetch('/api/restore-session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    btn.innerText = 'Session Restored! Connecting...';
+                    startPolling();
+                } else {
+                    err.innerText = data.error || 'Failed to restore session.';
+                    btn.disabled = false;
+                    btn.innerText = '🚀 Restore & Activate Bot';
+                }
+            } catch (e) {
+                err.innerText = 'Network error. Try again.';
+                btn.disabled = false;
+                btn.innerText = '🚀 Restore & Activate Bot';
             }
         }
 
