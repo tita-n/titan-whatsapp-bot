@@ -687,6 +687,18 @@ async function startTitan() {
             if (connectionLock) return; // Prevent multiple notifications
             connectionLock = true;
             
+            // Auto-detect and set owner JID from connected account
+            if (sock.user?.id) {
+                const connectedPn = sock.user.id.split(':')[0].split('@')[0];
+                if (!config.ownerNumber) config.ownerNumber = connectedPn;
+                if (!settings.ownerJid) {
+                    settings.ownerJid = `${connectedPn}@s.whatsapp.net`;
+                    saveSettings();
+                }
+            }
+
+            const ownerJidToSend = getOwnerJid(sock.user?.id);
+            
             // Reset reconnect attempts on successful connection
             if (reconnectAttempts > 0) {
                 console.log(`[TITAN] Connection restored after ${reconnectAttempts} reconnection attempts`);
@@ -699,7 +711,9 @@ async function startTitan() {
             // Only send "SYSTEM ONLINE" on first connect after bot starts
             if (isFirstConnection) {
                 isFirstConnection = false;
-                await sock.sendMessage(getOwnerJid(), { text: '⚡ *TITAN SYSTEM ONLINE*\n\nGlobal Shields Active. Stability level: CRITICAL_MAX.' });
+                if (ownerJidToSend) {
+                    await sock.sendMessage(ownerJidToSend, { text: '⚡ *TITAN SYSTEM ONLINE*\n\nGlobal Shields Active. Stability level: CRITICAL_MAX.' }).catch(() => {});
+                }
             } else {
                 console.log('[TITAN] Reconnected (skipping notification)');
             }
@@ -707,8 +721,8 @@ async function startTitan() {
             // --- SESSION EXPORTER ---
             try {
                 const sessionBundleString = exportSessionBundle(config.authPath);
-                if (sessionBundleString && !process.env.SESSION_ID) {
-                    await sock.sendMessage(getOwnerJid(), { text: `⚠️ *SESSION BACKUP (FULL BUNDLE)*\n\nCopy this key to your SESSION_ID env variable to keep session online across redeploys:\n\n${sessionBundleString}` });
+                if (sessionBundleString && ownerJidToSend) {
+                    await sock.sendMessage(ownerJidToSend, { text: `⚠️ *SESSION BACKUP (FULL BUNDLE)*\n\nCopy this key to your SESSION_ID env variable to keep session online across redeploys:\n\n${sessionBundleString}` }).catch(() => {});
                 }
             } catch (e) { }
 
@@ -929,7 +943,7 @@ async function startTitan() {
 
                 // --- MODE CONTROL ---
                 const mode = config.mode || settings.mode || 'private';
-                const owner = isOwner(sender);
+                const owner = fromMe || isOwner(sender, fromMe);
                 const isGroupChat = isGroup(jid);
                 const isChannelChat = isChannel(jid);
 

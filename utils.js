@@ -199,24 +199,35 @@ function cleanupStore() {
 setInterval(cleanupStore, 10 * 60 * 1000); // Every 10 mins
 
 // Helpers
-const getOwnerJid = () => `${config.ownerNumber}@s.whatsapp.net`;
+const getOwnerJid = () => {
+    if (settings.ownerJid) return settings.ownerJid;
+    if (config.ownerNumber) return `${config.ownerNumber}@s.whatsapp.net`;
+    return null;
+};
 
-const isOwner = (jid) => {
+const isOwner = (jid, fromMe = false) => {
+    if (fromMe) return true; // Commands sent from the bot account itself are ALWAYS owner!
     if (!jid) return false;
     const num = jid.split('@')[0].split(':')[0];
+    
+    // 1. Check process.env OWNER_NUMBER first
+    if (config.ownerNumber && num === config.ownerNumber) return true;
+    
+    // 2. Check dynamic ownerJid setting
     if (settings.ownerJid) {
-        const ownerNum = settings.ownerJid.split('@')[0];
-        return jid.split('@')[0] === ownerNum || num === ownerNum.split(':')[0];
+        const ownerNum = settings.ownerJid.split('@')[0].split(':')[0];
+        if (num === ownerNum) return true;
     }
-    if (num === config.ownerNumber) return true;
-    // Handle LID-based JIDs - try to resolve via lid-mapping files
+    
+    // 3. Handle LID-based JIDs - try to resolve via lid-mapping files
     try {
         if (jid.endsWith('@lid') || jid.endsWith('@hosted.lid') || jid.endsWith('@hosted')) {
             const lidUser = num;
             const reversePath = path.join(config.authPath, `lid-mapping-${lidUser}_reverse.json`);
             if (fs.existsSync(reversePath)) {
                 const pnUser = fs.readJsonSync(reversePath);
-                if (pnUser === config.ownerNumber) return true;
+                if (config.ownerNumber && pnUser === config.ownerNumber) return true;
+                if (settings.ownerJid && pnUser === settings.ownerJid.split('@')[0]) return true;
             }
         }
     } catch (e) {}
