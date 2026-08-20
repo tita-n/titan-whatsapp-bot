@@ -3,7 +3,7 @@ FROM node:18-alpine AS builder
 RUN apk add --no-cache ffmpeg python3 make g++ git
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+RUN npm install --no-audit --no-fund
 
 FROM node:18-alpine
 RUN apk add --no-cache ffmpeg python3 make g++ git
