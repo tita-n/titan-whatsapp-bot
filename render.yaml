@@ -6,7 +6,7 @@ services:
     startCommand: node index.js
     envVars:
       - key: NODE_VERSION
-        value: 18.17.1
+        value: 20.18.0
       - key: OWNER_NUMBER
         sync: false
         placeholder: "e.g. 2348081234567"
